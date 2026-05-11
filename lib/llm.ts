@@ -33,13 +33,58 @@ function stripMarkdownFences(text: string): string {
 }
 
 /**
+ * Extract JSON from text that might contain extra content
+ */
+function extractJSON(text: string): string {
+  const cleaned = stripMarkdownFences(text);
+  
+  // Try to find JSON object boundaries
+  const startBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  
+  if (startBrace === -1 || lastBrace === -1 || lastBrace < startBrace) {
+    throw new Error('No valid JSON object found in response');
+  }
+  
+  // Extract the JSON substring
+  const jsonCandidate = cleaned.substring(startBrace, lastBrace + 1);
+  
+  // Try to fix common JSON issues
+  let fixedJson = jsonCandidate
+    .replace(/,\s*}/g, '}') // Remove trailing commas
+    .replace(/,\s*]/g, ']') // Remove trailing commas in arrays
+    .replace(/\n/g, '\\n') // Escape newlines in strings
+    .replace(/\r/g, '\\r') // Escape carriage returns
+    .replace(/\t/g, '\\t'); // Escape tabs
+  
+  // Try to fix unterminated strings by finding and closing them
+  const stringMatches = fixedJson.match(/("(?:[^"\\]|\\.)*")/g) || [];
+  let lastStringEnd = 0;
+  
+  for (const match of stringMatches) {
+    lastStringEnd = fixedJson.indexOf(match, lastStringEnd) + match.length;
+  }
+  
+  // If there's unterminated string content after the last complete string
+  if (lastStringEnd < fixedJson.length) {
+    const remaining = fixedJson.substring(lastStringEnd);
+    if (remaining.includes('"') === false) {
+      // Close the unterminated string
+      fixedJson = fixedJson.substring(0, lastStringEnd) + '"' + remaining;
+    }
+  }
+  
+  return fixedJson;
+}
+
+/**
  * Safely parse JSON from LLM response
  */
 function parseJSONResponse(text: string): ATSGenerationResult {
-  const cleaned = stripMarkdownFences(text);
-  
   try {
-    const parsed = JSON.parse(cleaned);
+    // First try to extract and parse JSON
+    const jsonString = extractJSON(text);
+    const parsed = JSON.parse(jsonString);
     
     if (!parsed.resume || !parsed.coverLetter) {
       throw new Error('Invalid response structure: missing resume or coverLetter');
@@ -50,7 +95,22 @@ function parseJSONResponse(text: string): ATSGenerationResult {
       coverLetter: String(parsed.coverLetter),
     };
   } catch (error) {
-    throw new Error(`Failed to parse LLM response as JSON: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    // If JSON parsing fails, try to extract content manually
+    console.error('JSON parsing failed:', error);
+    console.error('Raw response:', text.substring(0, 500) + '...');
+    
+    // Fallback: try to extract resume and cover letter manually
+    const resumeMatch = text.match(/"resume"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/s);
+    const coverLetterMatch = text.match(/"coverLetter"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/s);
+    
+    if (resumeMatch && coverLetterMatch) {
+      return {
+        resume: resumeMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
+        coverLetter: coverLetterMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
+      };
+    }
+    
+    throw new Error(`Failed to parse LLM response: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
@@ -78,7 +138,7 @@ async function callGroq(prompt: string): Promise<string> {
           content: prompt,
         },
       ],
-      max_tokens: 2500,
+      max_tokens: 2000,
       temperature: 0.3,
       top_p: 1,
       stream: false,

@@ -37,8 +37,10 @@ You are an ATS (Applicant Tracking System) optimization expert. Your task:
 4. OUTPUT FORMAT (STRICT):
    - Return ONLY valid JSON with exactly two keys: "resume" and "coverLetter"
    - Values must be clean HTML strings (no markdown, no code fences)
-   - Escape quotes properly for JSON parsing
-   - NO additional text, explanations, or formatting
+   - Properly escape all quotes, newlines, and special characters in the HTML strings
+   - Ensure the JSON is complete and properly closed
+   - Example format: {"resume": "<h1>Professional Summary</h1><p>Summary text...</p>", "coverLetter": "<p>Dear Hiring Manager...</p>"}
+   - NO additional text, explanations, or formatting outside the JSON object
 
 Job Description:
 ${jd}

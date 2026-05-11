@@ -11,7 +11,7 @@ interface GenerationResult {
 
 interface FormState {
   jd: string;
-  resume: string;
+  resume: File | null;
 }
 
 // Sample data for demo purposes
@@ -61,13 +61,13 @@ JavaScript, React, Node.js, HTML, CSS, Git`;
 export default function Home() {
   const [formState, setFormState] = useState<FormState>({
     jd: '',
-    resume: '',
+    resume: null,
   });
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleInputChange = (field: keyof FormState, value: string) => {
+  const handleInputChange = (field: keyof FormState, value: string | File | null) => {
     setFormState(prev => ({ ...prev, [field]: value }));
     setError(null);
   };
@@ -75,7 +75,7 @@ export default function Home() {
   const loadSampleData = () => {
     setFormState({
       jd: SAMPLE_JD,
-      resume: SAMPLE_RESUME,
+      resume: null, // Can't load sample file
     });
     setError(null);
   };
@@ -111,7 +111,7 @@ export default function Home() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formState.jd.trim() || !formState.resume.trim()) {
+    if (!formState.jd.trim() || !formState.resume) {
       setError('Please fill in both fields');
       return;
     }
@@ -121,15 +121,13 @@ export default function Home() {
     setResult(null);
 
     try {
+      const formData = new FormData();
+      formData.append('jd', formState.jd);
+      formData.append('resume', formState.resume);
+
       const response = await fetch('/api/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          jd: formState.jd,
-          resume: formState.resume,
-        }),
+        body: formData,
       });
 
       const data = await response.json();
@@ -158,7 +156,7 @@ export default function Home() {
           ATS Resume & Cover Letter Generator
         </h1>
         <p className="text-gray-600 max-w-2xl mx-auto">
-          Paste a job description and your resume to generate an ATS-optimized resume 
+          Upload your resume and paste a job description to generate an ATS-optimized resume 
           and tailored cover letter powered by AI.
         </p>
       </header>
@@ -193,20 +191,38 @@ export default function Home() {
             />
           </div>
 
-          {/* Resume Input */}
+          {/* Resume File Upload */}
           <div>
             <label htmlFor="resume" className="block text-sm font-medium text-gray-700 mb-2">
-              Paste Your Resume *
+              Upload Your Resume *
             </label>
-            <textarea
-              id="resume"
-              value={formState.resume}
-              onChange={(e) => handleInputChange('resume', e.target.value)}
-              placeholder="Paste your current resume text here..."
-              rows={12}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none text-sm"
-              required
-            />
+            <div className="w-full">
+              <input
+                id="resume"
+                type="file"
+                accept=".pdf,.docx"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  if (file && file.size > 10 * 1024 * 1024) { // 10MB
+                    setError('Resume file is too large. Maximum size is 10MB.');
+                    handleInputChange('resume', null);
+                    e.target.value = '';
+                  } else {
+                    handleInputChange('resume', file);
+                  }
+                }}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-l-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                required
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Supported formats: PDF, DOCX (max 10MB)
+              </p>
+              {formState.resume && (
+                <p className="mt-2 text-sm text-green-600">
+                  ✓ {formState.resume.name} selected
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
