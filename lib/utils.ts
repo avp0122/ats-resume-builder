@@ -4,13 +4,13 @@
  * Helper functions for JSON sanitization, HTML validation, and hashing.
  */
 
-import { createHash } from 'crypto';
+import { createHash as createCryptoHash } from 'crypto';
 
 /**
  * Create a SHA-256 hash of input string for caching
  */
 export function createHash(input: string): string {
-  return createHash('sha256').update(input).digest('hex');
+  return createCryptoHash('sha256').update(input).digest('hex');
 }
 
 /**

@@ -15,11 +15,11 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  */
 function cleanCache() {
   const now = Date.now();
-  for (const [key, value] of cache.entries()) {
+  cache.forEach((value, key) => {
     if (now - value.timestamp > CACHE_TTL_MS) {
       cache.delete(key);
     }
-  }
+  });
 }
 
 /**

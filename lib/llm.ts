@@ -1,12 +1,10 @@
 /**
  * ATS Resume & Cover Letter Generator - LLM Client
  * 
- * Provides unified interface for Groq (primary) and Google Gemini (fallback)
- * with retry logic and exponential backoff.
+ * Provides Groq API integration with retry logic and exponential backoff.
  */
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
 export interface ATSGenerationResult {
   resume: string;
@@ -73,7 +71,7 @@ async function callGroq(prompt: string): Promise<string> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'llama3-70b-8192',
+      model: 'openai/gpt-oss-120b',
       messages: [
         {
           role: 'user',
@@ -101,53 +99,7 @@ async function callGroq(prompt: string): Promise<string> {
 }
 
 /**
- * Call Google Gemini API (fallback)
- */
-async function callGemini(prompt: string): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY not configured');
-  }
-
-  const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            {
-              text: prompt,
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        maxOutputTokens: 2500,
-        temperature: 0.3,
-        topP: 1,
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    const error: LLMError = new Error(
-      `Gemini API error: ${response.status} ${response.statusText} - ${errorData.error?.message || 'Unknown error'}`
-    );
-    error.statusCode = response.status;
-    throw error;
-  }
-
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-}
-
-/**
- * Generate ATS content with retry logic and fallback
+ * Generate ATS content with retry logic
  * 
  * @param jd - Job description text
  * @param resume - Original resume text
@@ -195,39 +147,8 @@ export async function generateATSContent(
     }
   }
 
-  // Fallback to Gemini if Groq fails completely
-  console.log('Groq failed, attempting fallback to Gemini...');
-  
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`Attempting Gemini API call (attempt ${attempt + 1})`);
-      const response = await callGemini(prompt);
-      
-      if (!response) {
-        throw new Error('Empty response from Gemini API');
-      }
-      
-      return parseJSONResponse(response);
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error('Unknown error');
-      
-      const llmError = error as LLMError;
-      const isRetryable = 
-        llmError.statusCode === 429 || 
-        (llmError.statusCode && llmError.statusCode >= 500);
-      
-      if (!isRetryable || attempt >= maxRetries) {
-        break;
-      }
-      
-      const delay = Math.pow(2, attempt) * 1000;
-      console.log(`Retrying in ${delay}ms due to: ${lastError.message}`);
-      await sleep(delay);
-    }
-  }
-
   // All attempts failed
   throw new Error(
-    `All LLM providers failed. Last error: ${lastError?.message || 'Unknown error'}`
+    `Groq generation failed after retries. Last error: ${lastError?.message || 'Unknown error'}`
   );
 }

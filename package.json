@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "dev": "unset npm_config_devdir && next dev",
+    "build": "unset npm_config_devdir && next build",
+    "start": "unset npm_config_devdir && next start",
+    "lint": "unset npm_config_devdir && next lint"
   },
   "dependencies": {
     "html2pdf.js": "^0.10.1",

@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import html2pdf from 'html2pdf.js';
 import ResumePreview from '@/components/ResumePreview';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
@@ -81,7 +80,7 @@ export default function Home() {
     setError(null);
   };
 
-  const downloadPDF = useCallback((htmlContent: string, filename: string) => {
+  const downloadPDF = useCallback(async (htmlContent: string, filename: string) => {
     const element = document.createElement('div');
     element.innerHTML = htmlContent;
     
@@ -99,6 +98,7 @@ export default function Home() {
       jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
     };
 
+    const { default: html2pdf } = await import('html2pdf.js');
     html2pdf().set(opt).from(element).save();
   }, []);
 
