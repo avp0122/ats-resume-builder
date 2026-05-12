@@ -43,7 +43,9 @@ export default function PricingCard({ plan }: { plan: Plan }) {
           <span className="text-5xl font-bold tracking-tight text-white">
             ${plan.priceUSD}
           </span>
-          <span className="text-white/40 text-sm">{plan.priceUSD === 0 ? '/forever' : ' once'}</span>
+          <span className="text-white/40 text-sm">
+            {plan.cadence === 'month' ? '/month' : '/forever'}
+          </span>
         </div>
 
         <ul className="mt-6 space-y-2.5">

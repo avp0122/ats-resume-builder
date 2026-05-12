@@ -11,6 +11,8 @@ import {
 import { bumpAnonCount, anonDownloadAllowed, FREE_LIMIT } from '@/lib/usage';
 import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { effectivePlan, signedInFreeDownloadAllowed } from '@/lib/plan';
+import { SIGNED_IN_FREE_GENERATIONS } from '@/lib/pricing';
 
 const cache = new Map<string, { result: any; timestamp: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -65,6 +67,7 @@ export async function POST(request: NextRequest) {
     // Identify user (signed in or anonymous).
     let userId: string | null = null;
     let plan: 'free' | 'pro' = 'free';
+    let proUntil: string | null = null;
     if (isSupabaseConfigured()) {
       try {
         const supabase = createSupabaseServerClient();
@@ -73,10 +76,11 @@ export async function POST(request: NextRequest) {
           userId = user.id;
           const { data: profile } = await supabase
             .from('profiles')
-            .select('plan')
+            .select('plan, pro_until')
             .eq('id', user.id)
-            .single();
-          plan = (profile?.plan as 'free' | 'pro') || 'free';
+            .maybeSingle();
+          plan = effectivePlan(profile);
+          proUntil = profile?.pro_until ?? null;
         }
       } catch {
         // Auth optional; continue as anon.
@@ -102,10 +106,11 @@ export async function POST(request: NextRequest) {
     let needsSignin = false;
 
     if (userId) {
-      // Signed in — unlimited for now. Increment counter + opportunistically
-      // backfill personal info on the profile (only fields that are still empty).
-      // Use upsert so a missing profile row (e.g. when the auth trigger didn't
-      // fire) self-heals on first interaction.
+      // Signed in — Pro is unlimited; free is gated at SIGNED_IN_FREE_GENERATIONS.
+      // Always increment the counter + opportunistically backfill personal
+      // info on the profile (only fields that are still empty). Use upsert
+      // so a missing profile row (e.g. when the auth trigger didn't fire)
+      // self-heals on first interaction.
       try {
         const admin = createSupabaseAdminClient();
         const { data: profile } = await admin
@@ -114,6 +119,10 @@ export async function POST(request: NextRequest) {
           .eq('id', userId)
           .maybeSingle();
         usageCount = (profile?.generations_count ?? 0) + 1;
+        if (plan === 'free') {
+          downloadAllowed = signedInFreeDownloadAllowed(usageCount);
+          needsSignin = false; // already signed in
+        }
 
         const upsertRow: Record<string, unknown> = {
           id: userId,
@@ -157,10 +166,12 @@ export async function POST(request: NextRequest) {
       missingKeywords: result.missingKeywords,
       usage: {
         count: usageCount,
-        freeLimit: FREE_LIMIT,
+        freeLimit: userId ? SIGNED_IN_FREE_GENERATIONS : FREE_LIMIT,
         downloadAllowed,
         needsSignin,
+        signedIn: !!userId,
         plan,
+        proUntil,
       },
     });
   } catch (error) {
