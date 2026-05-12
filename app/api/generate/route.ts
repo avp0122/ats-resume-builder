@@ -88,16 +88,37 @@ export async function POST(request: NextRequest) {
     let needsSignin = false;
 
     if (userId) {
-      // Signed in — unlimited for now. Increment counter for analytics.
+      // Signed in — unlimited for now. Increment counter + opportunistically
+      // backfill personal info on the profile (only fields that are still empty).
       try {
         const admin = createSupabaseAdminClient();
         const { data: profile } = await admin
           .from('profiles')
-          .select('generations_count')
+          .select('generations_count, full_name, contact_email, phone, location, date_of_birth, social_links')
           .eq('id', userId)
           .single();
         usageCount = (profile?.generations_count ?? 0) + 1;
-        await admin.from('profiles').update({ generations_count: usageCount }).eq('id', userId);
+
+        const update: Record<string, unknown> = { generations_count: usageCount };
+        const pi = result.personalInfo;
+        if (pi.fullName && !profile?.full_name) update.full_name = pi.fullName;
+        if (pi.email && !profile?.contact_email) update.contact_email = pi.email;
+        if (pi.phone && !profile?.phone) update.phone = pi.phone;
+        if (pi.location && !profile?.location) update.location = pi.location;
+        if (pi.dateOfBirth && !profile?.date_of_birth) update.date_of_birth = pi.dateOfBirth;
+        const existingLinks =
+          profile?.social_links && typeof profile.social_links === 'object'
+            ? (profile.social_links as Record<string, string>)
+            : {};
+        const mergedLinks: Record<string, string> = { ...existingLinks };
+        for (const [k, v] of Object.entries(pi.socialLinks) as Array<[string, string | undefined]>) {
+          if (v && !mergedLinks[k]) mergedLinks[k] = v;
+        }
+        if (JSON.stringify(mergedLinks) !== JSON.stringify(existingLinks)) {
+          update.social_links = mergedLinks;
+        }
+
+        await admin.from('profiles').update(update).eq('id', userId);
       } catch {
         // non-fatal
       }
@@ -108,6 +129,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
+      personalInfo: result.personalInfo,
       resume: result.resume,
       coverLetter: result.coverLetter,
       score: result.score,

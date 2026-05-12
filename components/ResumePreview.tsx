@@ -3,7 +3,10 @@
 import { useState } from 'react';
 
 interface ResumePreviewProps {
-  htmlContent: string;
+  /** Styled HTML rendered inside the preview pane (with contact header). */
+  previewHtml: string;
+  /** Fully styled HTML used for the PDF download (typically PDF-sized). */
+  downloadHtml: string;
   title: string;
   filename: string;
   downloadAllowed: boolean;
@@ -13,7 +16,8 @@ interface ResumePreviewProps {
 }
 
 export default function ResumePreview({
-  htmlContent,
+  previewHtml,
+  downloadHtml,
   title,
   filename,
   downloadAllowed,
@@ -29,7 +33,7 @@ export default function ResumePreview({
       onLockedAction?.();
       return;
     }
-    onCopy(htmlContent);
+    onCopy(downloadHtml);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -39,7 +43,7 @@ export default function ResumePreview({
       onLockedAction?.();
       return;
     }
-    onDownload(htmlContent, filename);
+    onDownload(downloadHtml, filename);
   };
 
   return (
@@ -87,10 +91,14 @@ export default function ResumePreview({
       </div>
 
       <div
-        className="prose-preview preview-scroll px-6 py-5 overflow-auto bg-white text-slate-900"
-        style={{ maxHeight: '640px' }}
-        dangerouslySetInnerHTML={{ __html: htmlContent }}
-      />
+        className="preview-scroll p-6 overflow-auto bg-slate-100"
+        style={{ maxHeight: '720px' }}
+      >
+        <div
+          className="shadow-lg rounded-md"
+          dangerouslySetInnerHTML={{ __html: previewHtml }}
+        />
+      </div>
     </div>
   );
 }

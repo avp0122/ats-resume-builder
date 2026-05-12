@@ -1,12 +1,15 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import ResumePreview from '@/components/ResumePreview';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import ATSScore from '@/components/ATSScore';
+import type { PersonalInfo } from '@/lib/llm';
+import { renderCoverLetterDocument, renderResumeDocument } from '@/lib/resumeTemplate';
 
 interface GenerationResult {
+  personalInfo: PersonalInfo;
   resume: string;
   coverLetter: string;
   score: number;
@@ -74,22 +77,31 @@ export default function Home() {
   };
 
   const downloadPDF = useCallback(async (htmlContent: string, filename: string) => {
-    const element = document.createElement('div');
-    element.innerHTML = htmlContent;
-    element.style.padding = '24px';
-    element.style.fontFamily = "'Inter', Arial, sans-serif";
-    element.style.fontSize = '12px';
-    element.style.lineHeight = '1.6';
-    element.style.color = '#0f172a';
+    // The htmlContent passed in is already a fully styled document
+    // (rendered via renderResumeDocument / renderCoverLetterDocument).
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = htmlContent;
+    // Off-screen so html2canvas can capture without affecting layout.
+    wrapper.style.position = 'fixed';
+    wrapper.style.left = '-10000px';
+    wrapper.style.top = '0';
+    document.body.appendChild(wrapper);
+
     const opt = {
-      margin: 0.5,
+      margin: 0,
       filename,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
       jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as const },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as any },
     };
+
     const { default: html2pdf } = await import('html2pdf.js');
-    html2pdf().set(opt).from(element).save();
+    try {
+      await html2pdf().set(opt).from(wrapper).save();
+    } finally {
+      wrapper.remove();
+    }
   }, []);
 
   const copyToClipboard = useCallback((html: string) => {
@@ -123,6 +135,37 @@ export default function Home() {
 
   const jdWordCount = formState.jd.trim() ? formState.jd.trim().split(/\s+/).length : 0;
   const canSubmit = formState.jd.trim().length > 0 && !!formState.resume && !isLoading;
+
+  const previewResumeHtml = useMemo(
+    () =>
+      result
+        ? renderResumeDocument(result.personalInfo, result.resume, 'preview')
+        : '',
+    [result]
+  );
+  const previewCoverHtml = useMemo(
+    () =>
+      result
+        ? renderCoverLetterDocument(result.personalInfo, result.coverLetter, 'preview')
+        : '',
+    [result]
+  );
+  const pdfResumeHtml = useMemo(
+    () => (result ? renderResumeDocument(result.personalInfo, result.resume, 'pdf') : ''),
+    [result]
+  );
+  const pdfCoverHtml = useMemo(
+    () =>
+      result ? renderCoverLetterDocument(result.personalInfo, result.coverLetter, 'pdf') : '',
+    [result]
+  );
+
+  const resumeFilename = result?.personalInfo.fullName
+    ? `${result.personalInfo.fullName.replace(/[^a-z0-9]+/gi, '_')}_Resume.pdf`
+    : 'resume.pdf';
+  const coverFilename = result?.personalInfo.fullName
+    ? `${result.personalInfo.fullName.replace(/[^a-z0-9]+/gi, '_')}_Cover_Letter.pdf`
+    : 'cover-letter.pdf';
 
   return (
     <main className="max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
@@ -339,9 +382,10 @@ export default function Home() {
 
           {activeTab === 'resume' ? (
             <ResumePreview
-              htmlContent={result.resume}
+              previewHtml={previewResumeHtml}
+              downloadHtml={pdfResumeHtml}
               title="ATS-Optimized Resume"
-              filename="ats-resume.pdf"
+              filename={resumeFilename}
               downloadAllowed={result.usage.downloadAllowed}
               onDownload={downloadPDF}
               onCopy={copyToClipboard}
@@ -349,9 +393,10 @@ export default function Home() {
             />
           ) : (
             <ResumePreview
-              htmlContent={result.coverLetter}
+              previewHtml={previewCoverHtml}
+              downloadHtml={pdfCoverHtml}
               title="Tailored Cover Letter"
-              filename="cover-letter.pdf"
+              filename={coverFilename}
               downloadAllowed={result.usage.downloadAllowed}
               onDownload={downloadPDF}
               onCopy={copyToClipboard}
