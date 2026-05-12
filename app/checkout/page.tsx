@@ -122,7 +122,7 @@ function CheckoutInner() {
               <div className="flex justify-between items-baseline">
                 <div>
                   <div className="text-xs uppercase tracking-widest text-white/40">Plan</div>
-                  <div className="text-lg font-semibold text-white">Pro · Lifetime</div>
+                  <div className="text-lg font-semibold text-white">Pro · 1 month</div>
                 </div>
                 <div className="text-right">
                   <div className="text-xs uppercase tracking-widest text-white/40">Order</div>

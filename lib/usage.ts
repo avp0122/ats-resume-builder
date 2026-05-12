@@ -2,7 +2,8 @@ import { createHmac, randomBytes } from 'crypto';
 import { cookies } from 'next/headers';
 
 const COOKIE_NAME = 'kresume_usage';
-const ANON_FREE_LIMIT = 2; // generations before signin is required to download
+const ANON_FREE_LIMIT = 1; // generations before signin is required to download
+export const SIGNED_IN_FREE_LIMIT = 3; // generations per period for signed-in free users
 
 function getSecret(): string {
   return process.env.USAGE_COOKIE_SECRET || 'dev-only-secret-replace-in-production';

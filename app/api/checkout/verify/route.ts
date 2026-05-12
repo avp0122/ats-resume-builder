@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getOwnerAddress, verifyUsdtTrc20 } from '@/lib/crypto';
-import { getPlan, PlanId } from '@/lib/pricing';
+import { getPlan, PlanId, PRO_PERIOD_DAYS } from '@/lib/pricing';
 
 const TX_HASH_RE = /^[0-9a-fA-F]{64}$/;
 
@@ -69,7 +69,24 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ error: 'Failed to record payment.' }, { status: 500 });
   }
-  await admin.from('profiles').update({ plan: planDef.id }).eq('id', user.id);
+  // Extend pro_until by PRO_PERIOD_DAYS — stack on top of any unexpired
+  // subscription so renewing early doesn't cost the user time.
+  const { data: existingProfile } = await admin
+    .from('profiles')
+    .select('pro_until')
+    .eq('id', user.id)
+    .maybeSingle();
+  const baseDate =
+    existingProfile?.pro_until && new Date(existingProfile.pro_until) > new Date()
+      ? new Date(existingProfile.pro_until)
+      : new Date();
+  const newProUntil = new Date(baseDate.getTime() + PRO_PERIOD_DAYS * 24 * 60 * 60 * 1000);
+  await admin
+    .from('profiles')
+    .upsert(
+      { id: user.id, plan: planDef.id, pro_until: newProUntil.toISOString() },
+      { onConflict: 'id' }
+    );
 
-  return NextResponse.json({ ok: true, plan: planDef.id });
+  return NextResponse.json({ ok: true, plan: planDef.id, proUntil: newProUntil.toISOString() });
 }

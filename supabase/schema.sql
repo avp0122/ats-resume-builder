@@ -5,6 +5,7 @@ create extension if not exists "pgcrypto";
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   plan text not null default 'free' check (plan in ('free', 'pro')),
+  pro_until timestamptz,
   generations_count int not null default 0,
   full_name text,
   contact_email text,
@@ -15,8 +16,10 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 
--- For existing installs, see supabase/migrations/002_personal_info.sql.
+-- For existing installs, see supabase/migrations/002_personal_info.sql and
+-- supabase/migrations/003_monthly_pro_subscription.sql.
 create index if not exists profiles_full_name_idx on public.profiles (lower(full_name));
+create index if not exists profiles_pro_until_idx on public.profiles (pro_until);
 
 create table if not exists public.payments (
   id uuid primary key default gen_random_uuid(),

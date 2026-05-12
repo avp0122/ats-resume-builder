@@ -21,7 +21,9 @@ interface GenerationResult {
     freeLimit: number;
     downloadAllowed: boolean;
     needsSignin: boolean;
+    signedIn: boolean;
     plan: 'free' | 'pro';
+    proUntil: string | null;
   };
 }
 
@@ -83,11 +85,13 @@ export default function Home() {
     // Mount it visibly off-screen with an explicit width so html2canvas can
     // measure and snapshot the layout — invisible/zero-width parents render
     // blank PDFs.
+    // A4 portrait at 96dpi = 794px wide.
+    const A4_WIDTH_PX = 794;
     const wrapper = document.createElement('div');
     wrapper.style.position = 'absolute';
     wrapper.style.top = '0';
     wrapper.style.left = '0';
-    wrapper.style.width = '816px'; // 8.5in * 96dpi
+    wrapper.style.width = `${A4_WIDTH_PX}px`;
     wrapper.style.background = '#ffffff';
     wrapper.style.zIndex = '-1';
     wrapper.style.opacity = '0';
@@ -99,19 +103,19 @@ export default function Home() {
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
     const opt = {
-      // Uniform 0.5in margin on every page (top/right/bottom/left). jsPDF
+      // Uniform 12mm margin on every page (top/right/bottom/left). jsPDF
       // applies this to all pages so multi-page PDFs don't have content
       // touching the page edges.
-      margin: [0.5, 0.5, 0.5, 0.5] as [number, number, number, number],
+      margin: [12, 12, 12, 12] as [number, number, number, number],
       filename,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
-        windowWidth: 816,
+        windowWidth: A4_WIDTH_PX,
       },
-      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as const },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
       // avoid-all keeps elements with break-inside:avoid intact on page splits.
       pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as any },
     };
@@ -189,7 +193,7 @@ export default function Home() {
       <header className="mb-10 sm:mb-14 text-center">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-white/70 text-xs font-medium mb-5">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          Free for 2 generations · no card · no signup
+          1 free generation, no card or signup
         </div>
         <h1 className="text-4xl sm:text-6xl font-bold tracking-tight">
           <span className="block text-white">Beat the bots.</span>
@@ -198,6 +202,12 @@ export default function Home() {
         <p className="mt-5 text-white/60 max-w-xl mx-auto text-base sm:text-lg">
           Paste a job description, upload your resume — get an ATS-optimized rewrite, a tailored cover letter, and a match score in seconds.
         </p>
+
+        <div className="mt-7 grid sm:grid-cols-3 gap-2 max-w-2xl mx-auto text-xs">
+          <TierBadge label="Anonymous" value="1 generation" tone="muted" />
+          <TierBadge label="Free + signed up" value="3 / month" tone="muted" />
+          <TierBadge label="Pro" value="Unlimited · $4.99/mo" tone="vibrant" />
+        </div>
       </header>
 
       {/* Form */}
@@ -355,16 +365,27 @@ export default function Home() {
                 <path fillRule="evenodd" d="M10 1a4 4 0 00-4 4v3H5a2 2 0 00-2 2v7a2 2 0 002 2h10a2 2 0 002-2v-7a2 2 0 00-2-2h-1V5a4 4 0 00-4-4z" clipRule="evenodd" />
               </svg>
               <div className="flex-1">
-                <p className="font-medium">You've used your free generations.</p>
-                <p className="mt-0.5 text-amber-200/80 text-xs">
-                  Sign in (free) to download this resume and continue generating.
-                </p>
+                {result.usage.signedIn ? (
+                  <>
+                    <p className="font-medium">You've used your {result.usage.freeLimit} free generations.</p>
+                    <p className="mt-0.5 text-amber-200/80 text-xs">
+                      Upgrade to Pro for unlimited generations and downloads — $4.99/month, paid in crypto.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-medium">You've used your free generation.</p>
+                    <p className="mt-0.5 text-amber-200/80 text-xs">
+                      Sign up free to get 3 generations / month, or upgrade to Pro for unlimited.
+                    </p>
+                  </>
+                )}
               </div>
               <Link
-                href="/signup"
-                className="px-3 py-1.5 bg-white text-slate-950 rounded-md font-semibold text-xs hover:bg-white/90 transition"
+                href={result.usage.signedIn ? '/pricing' : '/signup'}
+                className="px-3 py-1.5 bg-white text-slate-950 rounded-md font-semibold text-xs hover:bg-white/90 transition whitespace-nowrap"
               >
-                Sign up free
+                {result.usage.signedIn ? 'Upgrade' : 'Sign up free'}
               </Link>
             </div>
           )}
@@ -430,24 +451,43 @@ export default function Home() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="absolute -inset-1 -z-10 rounded-3xl bg-gradient-to-br from-fuchsia-500/30 via-indigo-500/30 to-sky-400/30 blur-xl" />
-            <h3 className="text-xl font-bold text-white">Sign in to download</h3>
-            <p className="mt-1 text-sm text-white/60">
-              You've reached the free limit ({result?.usage.freeLimit} generations). Create a free account to download and keep generating.
-            </p>
-            <div className="mt-5 grid gap-2.5">
-              <Link
-                href="/signup"
-                className="block text-center py-2.5 rounded-lg bg-gradient-to-r from-fuchsia-500 via-indigo-500 to-sky-400 text-white font-semibold hover:opacity-90 transition"
-              >
-                Create free account
-              </Link>
-              <Link
-                href="/signin"
-                className="block text-center py-2.5 rounded-lg bg-white/5 border border-white/10 text-white font-medium hover:bg-white/10 transition"
-              >
-                I already have an account
-              </Link>
-            </div>
+            {result?.usage.signedIn ? (
+              <>
+                <h3 className="text-xl font-bold text-white">Upgrade to Pro</h3>
+                <p className="mt-1 text-sm text-white/60">
+                  You've used your {result.usage.freeLimit} free generations. Pro gives you unlimited generations + downloads for $4.99/month, paid in crypto.
+                </p>
+                <div className="mt-5 grid gap-2.5">
+                  <Link
+                    href="/pricing"
+                    className="block text-center py-2.5 rounded-lg bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 font-semibold hover:opacity-90 transition"
+                  >
+                    See pricing
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-xl font-bold text-white">Sign in to download</h3>
+                <p className="mt-1 text-sm text-white/60">
+                  You've used your free generation. Sign up free to get {result?.usage.freeLimit ?? 3} more per month, or sign in if you already have an account.
+                </p>
+                <div className="mt-5 grid gap-2.5">
+                  <Link
+                    href="/signup"
+                    className="block text-center py-2.5 rounded-lg bg-gradient-to-r from-fuchsia-500 via-indigo-500 to-sky-400 text-white font-semibold hover:opacity-90 transition"
+                  >
+                    Create free account
+                  </Link>
+                  <Link
+                    href="/signin"
+                    className="block text-center py-2.5 rounded-lg bg-white/5 border border-white/10 text-white font-medium hover:bg-white/10 transition"
+                  >
+                    I already have an account
+                  </Link>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -456,5 +496,26 @@ export default function Home() {
         Built with care. Inputs are processed in-memory and discarded after generation.
       </footer>
     </main>
+  );
+}
+
+function TierBadge({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: 'muted' | 'vibrant';
+}) {
+  const styles =
+    tone === 'vibrant'
+      ? 'border-fuchsia-400/40 bg-fuchsia-500/10 text-white'
+      : 'border-white/10 bg-white/[0.03] text-white/70';
+  return (
+    <div className={`rounded-xl border ${styles} px-3 py-2 flex items-center justify-between gap-2`}>
+      <span className="font-medium">{label}</span>
+      <span className="opacity-90">{value}</span>
+    </div>
   );
 }

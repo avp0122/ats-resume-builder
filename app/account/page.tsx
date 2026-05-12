@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { effectivePlan } from '@/lib/plan';
+import { SIGNED_IN_FREE_GENERATIONS } from '@/lib/pricing';
 
 export const metadata = { title: 'Account — kresume' };
 
@@ -22,7 +24,7 @@ export default async function AccountPage() {
 
   let { data: profile } = await supabase
     .from('profiles')
-    .select('plan, generations_count, created_at')
+    .select('plan, pro_until, generations_count, created_at')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -36,7 +38,7 @@ export default async function AccountPage() {
         .upsert({ id: user.id }, { onConflict: 'id' });
       const refreshed = await supabase
         .from('profiles')
-        .select('plan, generations_count, created_at')
+        .select('plan, pro_until, generations_count, created_at')
         .eq('id', user.id)
         .maybeSingle();
       profile = refreshed.data;
@@ -45,7 +47,9 @@ export default async function AccountPage() {
     }
   }
 
-  const plan = profile?.plan ?? 'free';
+  const plan = effectivePlan(profile);
+  const generationsCount = profile?.generations_count ?? 0;
+  const remainingFree = Math.max(0, SIGNED_IN_FREE_GENERATIONS - generationsCount);
 
   return (
     <main className="max-w-3xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
@@ -71,11 +75,20 @@ export default async function AccountPage() {
         </div>
 
         <div className="mt-5 grid sm:grid-cols-2 gap-3">
-          <Stat label="Generations" value={String(profile?.generations_count ?? 0)} />
           <Stat
-            label="Member since"
+            label="Generations used"
             value={
-              profile?.created_at
+              plan === 'pro'
+                ? `${generationsCount} (unlimited)`
+                : `${generationsCount} / ${SIGNED_IN_FREE_GENERATIONS}`
+            }
+          />
+          <Stat
+            label={plan === 'pro' ? 'Pro renews' : 'Member since'}
+            value={
+              plan === 'pro' && profile?.pro_until
+                ? new Date(profile.pro_until).toLocaleDateString()
+                : profile?.created_at
                 ? new Date(profile.created_at).toLocaleDateString()
                 : new Date(user.created_at).toLocaleDateString()
             }
@@ -87,7 +100,9 @@ export default async function AccountPage() {
             href="/pricing"
             className="mt-6 block text-center py-2.5 rounded-lg bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 font-semibold hover:opacity-90 transition"
           >
-            Upgrade to Pro
+            {remainingFree > 0
+              ? `Upgrade to Pro — $4.99/month`
+              : `You've used your ${SIGNED_IN_FREE_GENERATIONS} free generations. Upgrade to Pro for unlimited.`}
           </Link>
         )}
       </section>

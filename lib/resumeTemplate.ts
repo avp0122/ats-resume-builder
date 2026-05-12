@@ -1,6 +1,7 @@
 import type { PersonalInfo } from './llm';
 
-const PDF_WIDTH_PX = 816; // 8.5in × 96dpi — matches html2canvas/letter portrait
+// A4 portrait at 96dpi: 210mm × 297mm = 794px × 1123px.
+const PDF_WIDTH_PX = 794;
 // Keep internal padding minimal; jsPDF margins handle the page edges, and a
 // thick template padding only on the very first page made top/bottom margins
 // asymmetric across paginated PDFs.
@@ -91,8 +92,12 @@ function renderResumeHeader(p: PersonalInfo): string {
   const links = Object.entries(p.socialLinks || {})
     .filter(([, v]) => Boolean(v))
     .map(([k, v]) => {
-      const label = SOCIAL_LABELS[k] || k;
-      return `<a href="${escapeAttr(v as string)}" style="color:#4f46e5;text-decoration:none;">${escapeHtml(label)}</a>`;
+      const url = v as string;
+      const display = displayUrl(url);
+      // Show the readable URL itself (not just the label) so it survives in
+      // printed PDFs where embedded hyperlinks are easy to miss. The href
+      // still works in PDFs that support links.
+      return `<a href="${escapeAttr(url)}" style="color:#4f46e5;text-decoration:none;">${escapeHtml(display)}</a>`;
     });
 
   return `
@@ -112,19 +117,19 @@ function renderResumeHeader(p: PersonalInfo): string {
   }
   ${
     links.length
-      ? `<div style="margin-top:4px;font-size:10pt;">${links.join('  ·  ')}</div>`
+      ? `<div style="margin-top:4px;font-size:10pt;color:#475569;">${links.join('  ·  ')}</div>`
       : ''
   }
 </header>`;
 }
 
-const SOCIAL_LABELS: Record<string, string> = {
-  linkedin: 'LinkedIn',
-  github: 'GitHub',
-  portfolio: 'Portfolio',
-  twitter: 'Twitter',
-  other: 'Website',
-};
+/**
+ * Strip protocol + trailing slash so URLs read cleanly on a printed page.
+ *   https://www.linkedin.com/in/foo/  →  linkedin.com/in/foo
+ */
+function displayUrl(url: string): string {
+  return url.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '');
+}
 
 function styleResumeBody(html: string): string {
   // page-break-inside:avoid keeps headings + bullets from splitting awkwardly
