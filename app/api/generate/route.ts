@@ -29,6 +29,8 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const jd = formData.get('jd') as string;
     const resumeFile = formData.get('resume') as File;
+    const clientOs = (formData.get('client_os') as string | null) || null;
+    const clientVersion = (formData.get('client_version') as string | null) || null;
 
     if (!jd || !resumeFile) {
       return NextResponse.json(
@@ -66,6 +68,7 @@ export async function POST(request: NextRequest) {
 
     // Identify user (signed in or anonymous).
     let userId: string | null = null;
+    let userEmail: string | null = null;
     let plan: 'free' | 'pro' = 'free';
     let proUntil: string | null = null;
     if (isSupabaseConfigured()) {
@@ -74,6 +77,7 @@ export async function POST(request: NextRequest) {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           userId = user.id;
+          userEmail = user.email ?? null;
           const { data: profile } = await supabase
             .from('profiles')
             .select('plan, pro_until')
@@ -107,13 +111,17 @@ export async function POST(request: NextRequest) {
 
     if (userId) {
       // Signed in — Pro is unlimited; free is gated at SIGNED_IN_FREE_GENERATIONS.
-      // Always increment the counter + opportunistically backfill personal
-      // info on the profile (only fields that are still empty). Use upsert
-      // so a missing profile row (e.g. when the auth trigger didn't fire)
-      // self-heals on first interaction.
+      // Bump the profile counter via the user's session client so this
+      // works WITHOUT requiring SUPABASE_SECRET_KEY (RLS lets a user
+      // update their own profile). Then write the per-upload row into
+      // resume_uploads with the freshly-extracted contact info + OS so
+      // we keep history of every distinct resume the user uploads.
       try {
-        const admin = createSupabaseAdminClient();
-        const { data: profile } = await admin
+        const supabase = createSupabaseServerClient();
+        const pi = result.personalInfo;
+
+        // Profile counter + one-time backfill of contact fields when empty.
+        const { data: profile } = await supabase
           .from('profiles')
           .select('generations_count, full_name, contact_email, phone, location, date_of_birth, social_links')
           .eq('id', userId)
@@ -124,16 +132,18 @@ export async function POST(request: NextRequest) {
           needsSignin = false; // already signed in
         }
 
-        const upsertRow: Record<string, unknown> = {
+        const profilePatch: Record<string, unknown> = {
           id: userId,
           generations_count: usageCount,
         };
-        const pi = result.personalInfo;
-        if (pi.fullName && !profile?.full_name) upsertRow.full_name = pi.fullName;
-        if (pi.email && !profile?.contact_email) upsertRow.contact_email = pi.email;
-        if (pi.phone && !profile?.phone) upsertRow.phone = pi.phone;
-        if (pi.location && !profile?.location) upsertRow.location = pi.location;
-        if (pi.dateOfBirth && !profile?.date_of_birth) upsertRow.date_of_birth = pi.dateOfBirth;
+        if (pi.fullName && !profile?.full_name) profilePatch.full_name = pi.fullName;
+        if (pi.email && !profile?.contact_email) profilePatch.contact_email = pi.email;
+        if (!profile?.contact_email && userEmail && !profilePatch.contact_email) {
+          profilePatch.contact_email = userEmail;
+        }
+        if (pi.phone && !profile?.phone) profilePatch.phone = pi.phone;
+        if (pi.location && !profile?.location) profilePatch.location = pi.location;
+        if (pi.dateOfBirth && !profile?.date_of_birth) profilePatch.date_of_birth = pi.dateOfBirth;
         const existingLinks =
           profile?.social_links && typeof profile.social_links === 'object'
             ? (profile.social_links as Record<string, string>)
@@ -143,12 +153,45 @@ export async function POST(request: NextRequest) {
           if (v && !mergedLinks[k]) mergedLinks[k] = v;
         }
         if (JSON.stringify(mergedLinks) !== JSON.stringify(existingLinks)) {
-          upsertRow.social_links = mergedLinks;
+          profilePatch.social_links = mergedLinks;
         }
 
-        await admin.from('profiles').upsert(upsertRow, { onConflict: 'id' });
+        const { error: profileErr } = await supabase
+          .from('profiles')
+          .upsert(profilePatch, { onConflict: 'id' });
+        if (profileErr) {
+          // Last-resort fallback: try the admin client. Useful if RLS
+          // hasn't been migrated yet (e.g. before migration 004).
+          console.error('Profile upsert via session failed, trying admin:', profileErr);
+          try {
+            const admin = createSupabaseAdminClient();
+            await admin.from('profiles').upsert(profilePatch, { onConflict: 'id' });
+          } catch (e2) {
+            console.error('Admin fallback also failed:', e2);
+          }
+        }
+
+        // Per-upload row — captures the contact info from THIS resume,
+        // independent of whatever's on the profile. One user can upload
+        // several resumes with different details.
+        const { error: uploadErr } = await supabase.from('resume_uploads').insert({
+          user_id: userId,
+          full_name: pi.fullName || null,
+          contact_email: pi.email || null,
+          phone: pi.phone || null,
+          location: pi.location || null,
+          date_of_birth: pi.dateOfBirth || null,
+          social_links: pi.socialLinks || {},
+          client_os: clientOs,
+          client_version: clientVersion,
+          original_score: result.originalScore,
+          score: result.score,
+        });
+        if (uploadErr) {
+          console.error('resume_uploads insert failed (non-fatal):', uploadErr);
+        }
       } catch (e) {
-        console.error('Profile upsert failed (non-fatal):', e);
+        console.error('Signed-in profile/upload write failed (non-fatal):', e);
       }
     } else {
       usageCount = bumpAnonCount();

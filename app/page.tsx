@@ -120,12 +120,16 @@ export default function Home() {
    * Mounted off-screen with an explicit width so html2canvas can snapshot it.
    */
   const renderPdfBlob = useCallback(async (htmlContent: string): Promise<Blob> => {
-    const A4_WIDTH_PX = 794; // A4 portrait at 96dpi
+    // 703px = 186mm at 96dpi = A4 page width minus the 12mm jsPDF margin
+    // on each side. MUST match PDF_WIDTH_PX in lib/resumeTemplate.ts. If
+    // this is bigger than the content area, jsPDF clips the right side
+    // and produces an asymmetric left/right margin.
+    const A4_CONTENT_WIDTH_PX = 703;
     const wrapper = document.createElement('div');
     wrapper.style.position = 'absolute';
     wrapper.style.top = '0';
     wrapper.style.left = '0';
-    wrapper.style.width = `${A4_WIDTH_PX}px`;
+    wrapper.style.width = `${A4_CONTENT_WIDTH_PX}px`;
     wrapper.style.background = '#ffffff';
     wrapper.style.zIndex = '-1';
     wrapper.style.opacity = '0';
@@ -143,7 +147,7 @@ export default function Home() {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
-        windowWidth: A4_WIDTH_PX,
+        windowWidth: A4_CONTENT_WIDTH_PX,
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
       pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as any },
@@ -174,6 +178,10 @@ export default function Home() {
       const formData = new FormData();
       formData.append('jd', formState.jd);
       formData.append('resume', formState.resume);
+      // Tell the server which OS the user is on so it can be logged with
+      // this upload (used for support / customization routing).
+      if (client?.os) formData.append('client_os', client.os);
+      if (client?.version) formData.append('client_version', client.version);
       const response = await fetch('/api/generate', { method: 'POST', body: formData });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to generate content');
@@ -238,21 +246,22 @@ export default function Home() {
       ]);
       const JSZip = JSZipMod.default;
 
-      const slug = client?.slug || 'unknown';
+      // Filenames no longer carry the OS slug — that's tracked in
+      // resume_uploads on the server instead, so we can route customization
+      // workflows by client without leaking it in user-facing names.
       const personSlug =
         result.personalInfo.fullName.replace(/[^a-z0-9]+/gi, '_').toLowerCase() ||
         'kresume';
-      const baseName = `${personSlug}_${slug}`;
 
       const zip = new JSZip();
-      zip.file(`${baseName}_resume.pdf`, resumeBlob);
-      zip.file(`${baseName}_cover_letter.pdf`, coverBlob);
+      zip.file(`${personSlug}_resume.pdf`, resumeBlob);
+      zip.file(`${personSlug}_cover_letter.pdf`, coverBlob);
       const zipBlob = await zip.generateAsync({ type: 'blob' });
 
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${baseName}.zip`;
+      a.download = `${personSlug}.zip`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -501,13 +510,7 @@ export default function Home() {
                 type="button"
                 onClick={downloadZip}
                 disabled={downloading}
-                title={
-                  client?.os && client.os !== 'unknown'
-                    ? `Downloads will be tagged for your ${client.os}${
-                        client.version ? ' ' + client.version : ''
-                      } client`
-                    : undefined
-                }
+                title="Downloads a ZIP with the resume and cover letter PDFs"
                 className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition shadow ${
                   result.usage.downloadAllowed
                     ? 'bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 hover:opacity-90'
