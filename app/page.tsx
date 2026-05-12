@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import ResumePreview from '@/components/ResumePreview';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -60,6 +60,37 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('resume');
   const [showSigninModal, setShowSigninModal] = useState(false);
+  // `hydrated` flips true once React is fully mounted on the client. Until
+  // then we don't accept file-input changes (they'd be lost into a half-
+  // hydrated React tree). Belt-and-suspenders: an extra native change
+  // listener attached via ref captures any selection that fires the very
+  // first millisecond after mount, before React's synthetic event system
+  // is rebound.
+  const [hydrated, setHydrated] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const input = fileInputRef.current;
+    if (!input) return;
+    const onChange = () => {
+      const file = input.files?.[0] || null;
+      if (file && file.size > 10 * 1024 * 1024) {
+        setError('Resume file is too large. Maximum size is 10MB.');
+        setFormState((prev) => ({ ...prev, resume: null }));
+        input.value = '';
+        return;
+      }
+      setFormState((prev) => ({ ...prev, resume: file }));
+      setError(null);
+    };
+    input.addEventListener('change', onChange);
+    return () => input.removeEventListener('change', onChange);
+  }, [hydrated]);
 
   const handleInputChange = (field: keyof FormState, value: string | File | null) => {
     setFormState((prev) => ({ ...prev, [field]: value }));
@@ -75,8 +106,7 @@ export default function Home() {
     setFormState({ jd: '', resume: null });
     setResult(null);
     setError(null);
-    const fileInput = document.getElementById('resume') as HTMLInputElement | null;
-    if (fileInput) fileInput.value = '';
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const downloadPDF = useCallback(async (htmlContent: string, filename: string) => {
@@ -251,8 +281,14 @@ export default function Home() {
                 </label>
                 <label
                   htmlFor="resume"
-                  className={`file-drop ${formState.resume ? 'has-file' : ''} flex flex-col items-center justify-center text-center px-4 py-10 rounded-xl cursor-pointer`}
+                  aria-disabled={!hydrated}
+                  className={`file-drop ${formState.resume ? 'has-file' : ''} ${
+                    hydrated ? 'cursor-pointer' : 'cursor-wait opacity-60'
+                  } flex flex-col items-center justify-center text-center px-4 py-10 rounded-xl`}
                   style={{ minHeight: '15rem' }}
+                  onClick={(e) => {
+                    if (!hydrated) e.preventDefault();
+                  }}
                 >
                   {formState.resume ? (
                     <>
@@ -273,25 +309,19 @@ export default function Home() {
                         <path d="M17 8l-5-5-5 5" strokeLinecap="round" strokeLinejoin="round" />
                         <path d="M12 3v12" strokeLinecap="round" />
                       </svg>
-                      <p className="text-sm font-medium text-white">Click to upload resume</p>
+                      <p className="text-sm font-medium text-white">
+                        {hydrated ? 'Click to upload resume' : 'Loading…'}
+                      </p>
                       <p className="text-xs text-white/40 mt-1">PDF or DOCX · max 10MB</p>
                     </>
                   )}
                   <input
                     id="resume"
+                    ref={fileInputRef}
                     type="file"
                     accept=".pdf,.docx"
                     className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] || null;
-                      if (file && file.size > 10 * 1024 * 1024) {
-                        setError('Resume file is too large. Maximum size is 10MB.');
-                        handleInputChange('resume', null);
-                        e.target.value = '';
-                      } else {
-                        handleInputChange('resume', file);
-                      }
-                    }}
+                    disabled={!hydrated}
                   />
                 </label>
                 <p className="mt-2 text-xs text-white/40">
