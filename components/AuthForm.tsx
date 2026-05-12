@@ -3,6 +3,7 @@
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { startRouteProgress } from '@/lib/nav';
 
 export default function AuthForm({ mode }: { mode: 'signin' | 'signup' }) {
   const router = useRouter();
@@ -30,14 +31,21 @@ export default function AuthForm({ mode }: { mode: 'signin' | 'signup' }) {
       if (!res.ok) throw new Error(data.error || 'Request failed');
       if (isSignup) {
         setInfo('Account created. Check your inbox for confirmation, then sign in.');
+        // Keep `loading` true so the form stays in the redirecting state
+        // until navigation actually starts.
+        startRouteProgress();
         setTimeout(() => router.push('/signin'), 1200);
-      } else {
-        router.push('/');
-        router.refresh();
+        return;
       }
+      // Successful signin — start the global progress bar in this frame so
+      // the bar shows during the otherwise-silent router.push + refresh
+      // window. Keep `loading` true until the page actually changes.
+      startRouteProgress();
+      router.push('/');
+      router.refresh();
+      return;
     } catch (err: any) {
       setError(err.message);
-    } finally {
       setLoading(false);
     }
   };
@@ -95,9 +103,19 @@ export default function AuthForm({ mode }: { mode: 'signin' | 'signup' }) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 rounded-lg bg-gradient-to-r from-fuchsia-500 via-indigo-500 to-sky-400 text-white font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-fuchsia-500/30"
+              className="w-full py-2.5 rounded-lg bg-gradient-to-r from-fuchsia-500 via-indigo-500 to-sky-400 text-white font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-fuchsia-500/30 inline-flex items-center justify-center gap-2"
             >
-              {loading ? '…' : isSignup ? 'Create account' : 'Sign in'}
+              {loading ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.3" strokeWidth="4" />
+                    <path d="M22 12a10 10 0 01-10 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+                  </svg>
+                  {info ? 'Redirecting…' : isSignup ? 'Creating account…' : 'Signing in…'}
+                </>
+              ) : (
+                <>{isSignup ? 'Create account' : 'Sign in'}</>
+              )}
             </button>
           </form>
 

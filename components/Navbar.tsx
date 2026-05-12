@@ -63,6 +63,14 @@ export default function Navbar() {
         </Link>
         <div className="flex items-center gap-1 sm:gap-3 text-sm">
           <Link
+            href="/"
+            className={`px-3 py-1.5 rounded-md transition ${
+              pathname === '/' ? 'text-white' : 'text-white/70 hover:text-white'
+            }`}
+          >
+            Home
+          </Link>
+          <Link
             href="/pricing"
             className={`px-3 py-1.5 rounded-md transition ${
               pathname === '/pricing' ? 'text-white' : 'text-white/70 hover:text-white'

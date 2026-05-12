@@ -140,6 +140,26 @@ function parseJSONResponse(text: string): ATSGenerationResult {
       parsed = JSON.parse(jsonString);
     }
 
+    // Tolerance: some model outputs nest the top-level keys (resume,
+    // coverLetter, scores, keywords) INSIDE personalInfo. JSON is still
+    // valid, but our structure check would otherwise fail. Detect that and
+    // hoist the misplaced fields back to the top level before validating.
+    const pi = parsed.personalInfo as Record<string, unknown> | undefined;
+    if (!parsed.resume && pi && typeof pi.resume === 'string') {
+      parsed.resume = pi.resume;
+      parsed.coverLetter = (parsed.coverLetter ?? pi.coverLetter) as unknown;
+      parsed.originalScore = (parsed.originalScore ?? pi.originalScore) as unknown;
+      parsed.score = (parsed.score ?? pi.score) as unknown;
+      parsed.matchedKeywords = (parsed.matchedKeywords ?? pi.matchedKeywords) as unknown;
+      parsed.missingKeywords = (parsed.missingKeywords ?? pi.missingKeywords) as unknown;
+      delete pi.resume;
+      delete pi.coverLetter;
+      delete pi.originalScore;
+      delete pi.score;
+      delete pi.matchedKeywords;
+      delete pi.missingKeywords;
+    }
+
     if (!parsed.resume || !parsed.coverLetter) {
       throw new Error('Invalid response structure: missing resume or coverLetter');
     }
