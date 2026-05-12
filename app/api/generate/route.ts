@@ -1,35 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateATSContent } from '@/lib/llm';
-import { validateInputs, createContentHash, formatErrorMessage, extractTextFromFile } from '@/lib/utils';
+import {
+  validateInputs,
+  createContentHash,
+  formatErrorMessage,
+  extractTextFromFile,
+} from '@/lib/utils';
+import { bumpAnonCount, anonDownloadAllowed, FREE_LIMIT } from '@/lib/usage';
+import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
-// In-memory cache for 5 minutes
-const cache = new Map<string, {
-  result: { resume: string; coverLetter: string };
-  timestamp: number;
-}>();
+const cache = new Map<string, { result: any; timestamp: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-/**
- * Clean expired cache entries
- */
 function cleanCache() {
   const now = Date.now();
   cache.forEach((value, key) => {
-    if (now - value.timestamp > CACHE_TTL_MS) {
-      cache.delete(key);
-    }
+    if (now - value.timestamp > CACHE_TTL_MS) cache.delete(key);
   });
 }
 
-/**
- * POST /api/generate
- * 
- * Accepts job description and resume file, returns ATS-optimized resume and cover letter
- */
 export async function POST(request: NextRequest) {
   try {
-    // Parse multipart form data
     const formData = await request.formData();
     const jd = formData.get('jd') as string;
     const resumeFile = formData.get('resume') as File;
@@ -40,74 +32,97 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    // Validate file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    if (resumeFile.size > maxSize) {
-      return NextResponse.json(
-        { error: 'Resume file is too large. Maximum size is 10MB.' },
-        { status: 400 }
-      );
+    if (resumeFile.size > 10 * 1024 * 1024) {
+      return NextResponse.json({ error: 'Resume file too large. Max 10MB.' }, { status: 400 });
     }
 
-    // Extract text from resume file
     let resumeText: string;
     try {
       resumeText = await extractTextFromFile(resumeFile);
-    } catch (error) {
+    } catch (e) {
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : 'Failed to process resume file' },
+        { error: e instanceof Error ? e.message : 'Failed to process resume file' },
         { status: 400 }
       );
     }
 
-    // Validate inputs
     const validation = validateInputs(jd, resumeText);
-    if (!validation.valid) {
-      return NextResponse.json(
-        { error: validation.error },
-        { status: 400 }
-      );
+    if (!validation.valid) return NextResponse.json({ error: validation.error }, { status: 400 });
+
+    // Identify user (signed in or anonymous).
+    let userId: string | null = null;
+    let plan: 'free' | 'pro' = 'free';
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = createSupabaseServerClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          userId = user.id;
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('plan')
+            .eq('id', user.id)
+            .single();
+          plan = (profile?.plan as 'free' | 'pro') || 'free';
+        }
+      } catch {
+        // Auth optional; continue as anon.
+      }
     }
 
-    // Check cache
     cleanCache();
-    const cacheKey = createContentHash(jd, resumeText);
-    const cachedResult = cache.get(cacheKey);
-    
-    if (cachedResult) {
-      console.log('Returning cached result');
-      return NextResponse.json({
-        resume: cachedResult.result.resume,
-        coverLetter: cachedResult.result.coverLetter,
-      });
+    const cacheKey = createContentHash(jd, resumeText) + ':' + (userId || 'anon');
+    const cached = cache.get(cacheKey);
+
+    let result;
+    if (cached) {
+      result = cached.result;
+    } else {
+      result = await generateATSContent(jd, resumeText);
+      cache.set(cacheKey, { result, timestamp: Date.now() });
     }
 
-    // Generate ATS content
-    console.log('Generating ATS content...');
-    const result = await generateATSContent(jd, resumeText);
+    // Track usage + decide download gating.
+    let downloadAllowed = true;
+    let usageCount = 0;
+    let needsSignin = false;
 
-    // Cache the result
-    cache.set(cacheKey, {
-      result,
-      timestamp: Date.now(),
-    });
-
-    console.log('Successfully generated ATS content');
+    if (userId) {
+      // Signed in — unlimited for now. Increment counter for analytics.
+      try {
+        const admin = createSupabaseAdminClient();
+        const { data: profile } = await admin
+          .from('profiles')
+          .select('generations_count')
+          .eq('id', userId)
+          .single();
+        usageCount = (profile?.generations_count ?? 0) + 1;
+        await admin.from('profiles').update({ generations_count: usageCount }).eq('id', userId);
+      } catch {
+        // non-fatal
+      }
+    } else {
+      usageCount = bumpAnonCount();
+      downloadAllowed = anonDownloadAllowed(usageCount);
+      needsSignin = !downloadAllowed;
+    }
 
     return NextResponse.json({
       resume: result.resume,
       coverLetter: result.coverLetter,
+      score: result.score,
+      matchedKeywords: result.matchedKeywords,
+      missingKeywords: result.missingKeywords,
+      usage: {
+        count: usageCount,
+        freeLimit: FREE_LIMIT,
+        downloadAllowed,
+        needsSignin,
+        plan,
+      },
     });
-
   } catch (error) {
     console.error('API error:', error);
-    
-    const errorMessage = formatErrorMessage(error);
-    
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: formatErrorMessage(error) }, { status: 500 });
   }
 }

@@ -32,6 +32,9 @@ htmlcov/
 *.swp
 *.swo
 
+# Claude Code workspace (machine-specific)
+.claude/
+
 # OS files
 .DS_Store
 Thumbs.db

@@ -1,46 +1,41 @@
 /**
- * ATS Resume & Cover Letter Generator - Prompt Templates
- * 
- * Contains the exact prompt template for ATS optimization.
+ * Kresume prompt template — returns ATS-optimized resume, cover letter, and an ATS score.
  */
 
-/**
- * Generate the ATS optimization prompt
- * 
- * @param jd - Job description text
- * @param resume - Original resume text
- * @returns Formatted prompt string for LLM
- */
 export function getATSPrompt(jd: string, resume: string): string {
   return `
-You are an ATS (Applicant Tracking System) optimization expert. Your task:
+You are an ATS (Applicant Tracking System) optimization expert.
 
-1. ANALYZE the Job Description (JD) to extract:
-   - Required hard/soft skills, certifications, tools
-   - Core responsibilities and keywords (exact phrases to match)
-   - Seniority level and industry context
+ANALYZE the Job Description (JD) to extract:
+- Required hard/soft skills, certifications, tools
+- Core responsibilities and keywords (exact phrases to match)
+- Seniority level and industry context
 
-2. REWRITE the resume to be ATS-friendly:
-   - Use ONLY these section headings in order: "Professional Summary", "Skills", "Experience", "Education", "Certifications" (if applicable)
-   - Remove tables, columns, graphics, icons, headers/footers
-   - Match JD keywords naturally (no keyword stuffing)
-   - Use standard date format: "MMM YYYY – MMM YYYY"
-   - Start bullet points with strong action verbs + quantify results
-   - Keep formatting: plain HTML with <h1>, <h2>, <h3>, <p>, <ul>, <li> ONLY
+REWRITE the resume to be ATS-friendly:
+- Sections in order: "Professional Summary", "Skills", "Experience", "Education", "Certifications" (if applicable)
+- No tables, columns, graphics, icons, headers/footers
+- Match JD keywords naturally (no keyword stuffing)
+- Standard date format: "MMM YYYY – MMM YYYY"
+- Bullet points: strong action verbs + quantified results
+- Plain HTML only: <h1>, <h2>, <h3>, <p>, <ul>, <li>
 
-3. WRITE a tailored cover letter:
-   - 3-4 concise paragraphs
-   - Align candidate's background with JD requirements
-   - Show enthusiasm + specific value-add
-   - Plain HTML with <p> tags only
+WRITE a tailored cover letter (3-4 short paragraphs, <p> tags only).
 
-4. OUTPUT FORMAT (STRICT):
-   - Return ONLY valid JSON with exactly two keys: "resume" and "coverLetter"
-   - Values must be clean HTML strings (no markdown, no code fences)
-   - Properly escape all quotes, newlines, and special characters in the HTML strings
-   - Ensure the JSON is complete and properly closed
-   - Example format: {"resume": "<h1>Professional Summary</h1><p>Summary text...</p>", "coverLetter": "<p>Dear Hiring Manager...</p>"}
-   - NO additional text, explanations, or formatting outside the JSON object
+COMPUTE the ATS match score:
+- score: integer 0–100 reflecting how well the rewritten resume matches the JD
+- matchedKeywords: up to 12 JD keywords/phrases the rewritten resume covers
+- missingKeywords: up to 8 JD keywords the candidate lacks based on the original resume
+
+OUTPUT (STRICT):
+Return ONLY a single JSON object with EXACTLY these keys:
+{
+  "resume": "<html string>",
+  "coverLetter": "<html string>",
+  "score": <int 0-100>,
+  "matchedKeywords": [<strings>],
+  "missingKeywords": [<strings>]
+}
+No prose, no markdown fences. Escape quotes and newlines inside the HTML strings.
 
 Job Description:
 ${jd}

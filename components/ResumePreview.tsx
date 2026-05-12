@@ -1,61 +1,94 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 interface ResumePreviewProps {
   htmlContent: string;
   title: string;
+  filename: string;
+  downloadAllowed: boolean;
   onDownload: (html: string, filename: string) => void;
   onCopy?: (html: string) => void;
+  onLockedAction?: () => void;
 }
 
-/**
- * ResumePreview Component
- * 
- * Displays HTML content preview with download and copy functionality
- */
-export default function ResumePreview({ 
-  htmlContent, 
-  title, 
+export default function ResumePreview({
+  htmlContent,
+  title,
+  filename,
+  downloadAllowed,
   onDownload,
-  onCopy 
+  onCopy,
+  onLockedAction,
 }: ResumePreviewProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    if (onCopy) {
-      onCopy(htmlContent);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+    if (!onCopy) return;
+    if (!downloadAllowed) {
+      onLockedAction?.();
+      return;
     }
+    onCopy(htmlContent);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const handleDownload = () => {
+    if (!downloadAllowed) {
+      onLockedAction?.();
+      return;
+    }
+    onDownload(htmlContent, filename);
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold text-gray-800">{title}</h2>
+    <div className="rounded-3xl border border-white/10 bg-slate-950/60 backdrop-blur-xl overflow-hidden shadow-2xl">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 bg-white/5">
+        <h3 className="text-sm font-semibold text-white tracking-tight">{title}</h3>
         <div className="flex gap-2">
           {onCopy && (
             <button
               onClick={handleCopy}
-              className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors"
-              title="Copy HTML"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white/80 bg-white/5 border border-white/10 rounded-md hover:bg-white/10 transition"
             >
               {copied ? '✓ Copied' : 'Copy HTML'}
             </button>
           )}
           <button
-            onClick={() => onDownload(htmlContent, `${title.toLowerCase().replace(/\s+/g, '-')}.pdf`)}
-            className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+            onClick={handleDownload}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition shadow ${
+              downloadAllowed
+                ? 'bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white hover:opacity-90'
+                : 'bg-white/10 text-white/70 hover:bg-white/15'
+            }`}
           >
-            Download PDF
+            {downloadAllowed ? (
+              <>
+                <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M10 3v10m0 0l-3.5-3.5M10 13l3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Download PDF
+              </>
+            ) : (
+              <>
+                <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                  <path
+                    fillRule="evenodd"
+                    d="M10 1a4 4 0 00-4 4v3H5a2 2 0 00-2 2v7a2 2 0 002 2h10a2 2 0 002-2v-7a2 2 0 00-2-2h-1V5a4 4 0 00-4-4zm2 7V5a2 2 0 10-4 0v3h4z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                Sign in to download
+              </>
+            )}
           </button>
         </div>
       </div>
-      
-      <div 
-        className="prose max-w-none border rounded p-4 bg-gray-50 overflow-auto"
-        style={{ maxHeight: '600px' }}
+
+      <div
+        className="prose-preview preview-scroll px-6 py-5 overflow-auto bg-white text-slate-900"
+        style={{ maxHeight: '640px' }}
         dangerouslySetInnerHTML={{ __html: htmlContent }}
       />
     </div>

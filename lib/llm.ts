@@ -9,6 +9,9 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 export interface ATSGenerationResult {
   resume: string;
   coverLetter: string;
+  score: number;
+  matchedKeywords: string[];
+  missingKeywords: string[];
 }
 
 interface LLMError extends Error {
@@ -82,17 +85,34 @@ function extractJSON(text: string): string {
  */
 function parseJSONResponse(text: string): ATSGenerationResult {
   try {
-    // First try to extract and parse JSON
-    const jsonString = extractJSON(text);
-    const parsed = JSON.parse(jsonString);
-    
+    let parsed: {
+      resume?: unknown;
+      coverLetter?: unknown;
+      score?: unknown;
+      matchedKeywords?: unknown;
+      missingKeywords?: unknown;
+    };
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      const jsonString = extractJSON(text);
+      parsed = JSON.parse(jsonString);
+    }
+
     if (!parsed.resume || !parsed.coverLetter) {
       throw new Error('Invalid response structure: missing resume or coverLetter');
     }
-    
+
+    const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
+    const toStringArray = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 20) : [];
+
     return {
       resume: String(parsed.resume),
       coverLetter: String(parsed.coverLetter),
+      score,
+      matchedKeywords: toStringArray(parsed.matchedKeywords),
+      missingKeywords: toStringArray(parsed.missingKeywords),
     };
   } catch (error) {
     // If JSON parsing fails, try to extract content manually
@@ -107,6 +127,9 @@ function parseJSONResponse(text: string): ATSGenerationResult {
       return {
         resume: resumeMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
         coverLetter: coverLetterMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
+        score: 0,
+        matchedKeywords: [],
+        missingKeywords: [],
       };
     }
     
@@ -134,14 +157,20 @@ async function callGroq(prompt: string): Promise<string> {
       model: 'openai/gpt-oss-120b',
       messages: [
         {
+          role: 'system',
+          content:
+            'You are an ATS optimization assistant. You MUST respond with a single valid JSON object containing exactly two string keys: "resume" and "coverLetter". No prose, no markdown fences — JSON only.',
+        },
+        {
           role: 'user',
           content: prompt,
         },
       ],
-      max_tokens: 2000,
+      max_tokens: 4000,
       temperature: 0.3,
       top_p: 1,
       stream: false,
+      response_format: { type: 'json_object' },
     }),
   });
 

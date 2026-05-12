@@ -89,16 +89,27 @@ export function createContentHash(jd: string, resume: string): string {
  */
 export function formatErrorMessage(error: unknown): string {
   if (error instanceof Error) {
-    // Don't expose internal API details to users
-    if (error.message.includes('API')) {
-      return 'Failed to connect to AI service. Please check your internet connection and try again.';
+    const msg = error.message;
+
+    // Surface rate-limit / payload-size errors clearly — these are actionable.
+    if (msg.includes('413') || /payload too large/i.test(msg) || /tokens per minute|TPM/i.test(msg)) {
+      return 'Your request exceeded the AI provider\'s rate limit. Try a shorter resume or job description, or wait a minute and retry.';
     }
-    if (error.message.includes('parse') || error.message.includes('JSON')) {
+    if (msg.includes('429') || /rate limit/i.test(msg)) {
+      return 'Too many requests right now. Please wait a moment and try again.';
+    }
+    if (/GROQ_API_KEY|api key/i.test(msg)) {
+      return 'AI provider is not configured. Add GROQ_API_KEY to your .env.local and restart the dev server.';
+    }
+    if (/ENOTFOUND|ECONNREFUSED|fetch failed|network/i.test(msg)) {
+      return 'Failed to reach the AI service. Check your internet connection and try again.';
+    }
+    if (msg.includes('parse') || msg.includes('JSON')) {
       return 'Received invalid response from AI service. Please try again.';
     }
-    return error.message;
+    return msg;
   }
-  
+
   return 'An unexpected error occurred. Please try again.';
 }
 

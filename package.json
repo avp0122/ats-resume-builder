@@ -9,6 +9,8 @@
     "lint": "unset npm_config_devdir && next lint"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.105.4",
     "html2pdf.js": "^0.10.1",
     "mammoth": "^1.7.2",
     "next": "14.2.5",
