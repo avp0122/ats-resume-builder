@@ -7,6 +7,7 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import ATSScore from '@/components/ATSScore';
 import type { PersonalInfo } from '@/lib/llm';
 import { renderCoverLetterDocument, renderResumeDocument } from '@/lib/resumeTemplate';
+import { detectClient, type ClientInfo } from '@/lib/clientInfo';
 
 interface GenerationResult {
   personalInfo: PersonalInfo;
@@ -67,10 +68,15 @@ export default function Home() {
   // first millisecond after mount, before React's synthetic event system
   // is rebound.
   const [hydrated, setHydrated] = useState(false);
+  const [client, setClient] = useState<ClientInfo | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setHydrated(true);
+    // Async OS sniff (uses navigator.userAgentData when available).
+    detectClient().then(setClient).catch(() => setClient(null));
   }, []);
 
   useEffect(() => {
@@ -109,14 +115,12 @@ export default function Home() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const downloadPDF = useCallback(async (htmlContent: string, filename: string) => {
-    // The htmlContent passed in is already a fully styled document
-    // (rendered via renderResumeDocument / renderCoverLetterDocument).
-    // Mount it visibly off-screen with an explicit width so html2canvas can
-    // measure and snapshot the layout — invisible/zero-width parents render
-    // blank PDFs.
-    // A4 portrait at 96dpi = 794px wide.
-    const A4_WIDTH_PX = 794;
+  /**
+   * Render a styled HTML document into a PDF Blob (A4 portrait).
+   * Mounted off-screen with an explicit width so html2canvas can snapshot it.
+   */
+  const renderPdfBlob = useCallback(async (htmlContent: string): Promise<Blob> => {
+    const A4_WIDTH_PX = 794; // A4 portrait at 96dpi
     const wrapper = document.createElement('div');
     wrapper.style.position = 'absolute';
     wrapper.style.top = '0';
@@ -129,15 +133,11 @@ export default function Home() {
     wrapper.innerHTML = htmlContent;
     document.body.appendChild(wrapper);
 
-    // Yield to the browser so layout/fonts settle before snapshot.
+    // Yield twice so layout/fonts settle before snapshot.
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
     const opt = {
-      // Uniform 12mm margin on every page (top/right/bottom/left). jsPDF
-      // applies this to all pages so multi-page PDFs don't have content
-      // touching the page edges.
       margin: [12, 12, 12, 12] as [number, number, number, number],
-      filename,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: {
         scale: 2,
@@ -146,13 +146,16 @@ export default function Home() {
         windowWidth: A4_WIDTH_PX,
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-      // avoid-all keeps elements with break-inside:avoid intact on page splits.
       pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as any },
     };
 
     const { default: html2pdf } = await import('html2pdf.js');
     try {
-      await html2pdf().set(opt).from(wrapper.firstElementChild || wrapper).save();
+      const blob = (await html2pdf()
+        .set(opt)
+        .from(wrapper.firstElementChild || wrapper)
+        .output('blob')) as Blob;
+      return blob;
     } finally {
       wrapper.remove();
     }
@@ -210,12 +213,59 @@ export default function Home() {
     [result]
   );
 
-  const resumeFilename = result?.personalInfo.fullName
-    ? `${result.personalInfo.fullName.replace(/[^a-z0-9]+/gi, '_')}_Resume.pdf`
-    : 'resume.pdf';
-  const coverFilename = result?.personalInfo.fullName
-    ? `${result.personalInfo.fullName.replace(/[^a-z0-9]+/gi, '_')}_Cover_Letter.pdf`
-    : 'cover-letter.pdf';
+  /**
+   * Download a single ZIP containing the resume + cover letter PDFs.
+   * Filenames include the detected client OS (e.g. "windows_11") so future
+   * customization workflows can route based on platform.
+   *
+   * TODO: when the Windows-customization API is available, branch here:
+   * if `client?.os === 'windows'`, POST `pdfResumeHtml` to that endpoint,
+   * swap the returned Blob into the ZIP under the same filename scheme.
+   */
+  const downloadZip = useCallback(async () => {
+    if (!result) return;
+    if (!result.usage.downloadAllowed) {
+      setShowSigninModal(true);
+      return;
+    }
+    setDownloading(true);
+    setDownloadError(null);
+    try {
+      const [resumeBlob, coverBlob, JSZipMod] = await Promise.all([
+        renderPdfBlob(pdfResumeHtml),
+        renderPdfBlob(pdfCoverHtml),
+        import('jszip'),
+      ]);
+      const JSZip = JSZipMod.default;
+
+      const slug = client?.slug || 'unknown';
+      const personSlug =
+        result.personalInfo.fullName.replace(/[^a-z0-9]+/gi, '_').toLowerCase() ||
+        'kresume';
+      const baseName = `${personSlug}_${slug}`;
+
+      const zip = new JSZip();
+      zip.file(`${baseName}_resume.pdf`, resumeBlob);
+      zip.file(`${baseName}_cover_letter.pdf`, coverBlob);
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${baseName}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('ZIP download failed:', e);
+      setDownloadError(
+        e instanceof Error ? e.message : 'Could not build the download. Please try again.'
+      );
+    } finally {
+      setDownloading(false);
+    }
+  }, [client, pdfResumeHtml, pdfCoverHtml, renderPdfBlob, result]);
 
   return (
     <main className="max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
@@ -420,55 +470,97 @@ export default function Home() {
             </div>
           )}
 
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
             <h2 className="text-xl font-semibold tracking-tight text-white">Results</h2>
-            <div className="inline-flex bg-white/5 rounded-xl p-1 border border-white/10">
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <div className="inline-flex bg-white/5 rounded-xl p-1 border border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('resume')}
+                  className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition ${
+                    activeTab === 'resume'
+                      ? 'bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow'
+                      : 'text-white/60 hover:text-white'
+                  }`}
+                >
+                  Resume
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('cover')}
+                  className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition ${
+                    activeTab === 'cover'
+                      ? 'bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow'
+                      : 'text-white/60 hover:text-white'
+                  }`}
+                >
+                  Cover letter
+                </button>
+              </div>
               <button
                 type="button"
-                onClick={() => setActiveTab('resume')}
-                className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition ${
-                  activeTab === 'resume'
-                    ? 'bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow'
-                    : 'text-white/60 hover:text-white'
-                }`}
+                onClick={downloadZip}
+                disabled={downloading}
+                title={
+                  client?.os && client.os !== 'unknown'
+                    ? `Downloads will be tagged for your ${client.os}${
+                        client.version ? ' ' + client.version : ''
+                      } client`
+                    : undefined
+                }
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition shadow ${
+                  result.usage.downloadAllowed
+                    ? 'bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 hover:opacity-90'
+                    : 'bg-white/10 text-white/70 hover:bg-white/15'
+                } disabled:opacity-60 disabled:cursor-not-allowed`}
               >
-                Resume
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('cover')}
-                className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition ${
-                  activeTab === 'cover'
-                    ? 'bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow'
-                    : 'text-white/60 hover:text-white'
-                }`}
-              >
-                Cover letter
+                {downloading ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.3" strokeWidth="4" />
+                      <path d="M22 12a10 10 0 01-10 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+                    </svg>
+                    Preparing…
+                  </>
+                ) : result.usage.downloadAllowed ? (
+                  <>
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                      <path d="M10 3v10m0 0l-3.5-3.5M10 13l3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Download .zip
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                      <path
+                        fillRule="evenodd"
+                        d="M10 1a4 4 0 00-4 4v3H5a2 2 0 00-2 2v7a2 2 0 002 2h10a2 2 0 002-2v-7a2 2 0 00-2-2h-1V5a4 4 0 00-4-4zm2 7V5a2 2 0 10-4 0v3h4z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    Sign in to download
+                  </>
+                )}
               </button>
             </div>
           </div>
 
+          {downloadError && (
+            <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 text-rose-200 text-sm p-3">
+              {downloadError}
+            </div>
+          )}
+
           {activeTab === 'resume' ? (
             <ResumePreview
               previewHtml={previewResumeHtml}
-              downloadHtml={pdfResumeHtml}
               title="ATS-Optimized Resume"
-              filename={resumeFilename}
-              downloadAllowed={result.usage.downloadAllowed}
-              copyMode="none"
-              onDownload={downloadPDF}
-              onLockedAction={() => setShowSigninModal(true)}
             />
           ) : (
             <ResumePreview
               previewHtml={previewCoverHtml}
-              downloadHtml={pdfCoverHtml}
               title="Tailored Cover Letter"
-              filename={coverFilename}
-              downloadAllowed={result.usage.downloadAllowed}
-              copyMode="text"
-              onDownload={downloadPDF}
-              onLockedAction={() => setShowSigninModal(true)}
+              copyText={pdfCoverHtml}
             />
           )}
         </section>
