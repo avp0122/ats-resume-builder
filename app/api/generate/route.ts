@@ -5,6 +5,8 @@ import {
   createContentHash,
   formatErrorMessage,
   extractTextFromFile,
+  compressText,
+  estimateTokens,
 } from '@/lib/utils';
 import { bumpAnonCount, anonDownloadAllowed, FREE_LIMIT } from '@/lib/usage';
 import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
@@ -46,7 +48,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const validation = validateInputs(jd, resumeText);
+    // Strip noisy whitespace, page numbers, repeated headers/footers from the
+    // PDF/DOCX extraction. Keeps token count low so we fit Groq's free-tier
+    // 8K TPM budget. Same for the JD field.
+    const compressedResume = compressText(resumeText);
+    const compressedJd = compressText(jd);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(
+        `Compression: resume ${resumeText.length} → ${compressedResume.length} chars (~${estimateTokens(resumeText)} → ${estimateTokens(compressedResume)} tokens), jd ${jd.length} → ${compressedJd.length} chars`
+      );
+    }
+
+    const validation = validateInputs(compressedJd, compressedResume);
     if (!validation.valid) return NextResponse.json({ error: validation.error }, { status: 400 });
 
     // Identify user (signed in or anonymous).
@@ -71,14 +84,15 @@ export async function POST(request: NextRequest) {
     }
 
     cleanCache();
-    const cacheKey = createContentHash(jd, resumeText) + ':' + (userId || 'anon');
+    const cacheKey =
+      createContentHash(compressedJd, compressedResume) + ':' + (userId || 'anon');
     const cached = cache.get(cacheKey);
 
     let result;
     if (cached) {
       result = cached.result;
     } else {
-      result = await generateATSContent(jd, resumeText);
+      result = await generateATSContent(compressedJd, compressedResume);
       cache.set(cacheKey, { result, timestamp: Date.now() });
     }
 

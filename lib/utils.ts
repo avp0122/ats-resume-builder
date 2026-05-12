@@ -91,6 +91,10 @@ export function formatErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     const msg = error.message;
 
+    // Pre-flight: input too large to fit the free-tier rate limit.
+    if (/too large for the free-tier rate limit/i.test(msg)) {
+      return msg; // already user-friendly
+    }
     // Truncated response from the LLM — actionable, distinct from rate limits.
     if (/exceeded the maximum length|cut off before completing|max_tokens/i.test(msg)) {
       return 'The AI response was too long. Try a shorter resume or job description and retry.';
@@ -115,6 +119,56 @@ export function formatErrorMessage(error: unknown): string {
   }
 
   return 'An unexpected error occurred. Please try again.';
+}
+
+/**
+ * Compress resume/JD text extracted from a document so we send fewer tokens
+ * to the LLM without losing information.
+ *
+ * PDF-derived text is usually noisy: extra whitespace between every word,
+ * scattered page numbers, repeated headers/footers, single-character bullet
+ * artifacts. This routine cleans those up.
+ */
+export function compressText(text: string): string {
+  if (!text) return '';
+  const lines = text.split(/\r?\n/);
+  const cleaned: string[] = [];
+  let lastLine = '';
+
+  for (let raw of lines) {
+    // Normalize internal whitespace.
+    let line = raw.replace(/\s+/g, ' ').trim();
+    if (!line) continue;
+
+    // Drop standalone page numbers ("3", "Page 3 of 12", "3/12").
+    if (
+      /^(page\s*)?\d{1,3}(\s*(of|\/)\s*\d{1,3})?$/i.test(line) ||
+      /^- \d+ -$/.test(line)
+    ) {
+      continue;
+    }
+
+    // Drop very short artifact lines (single chars / bullets-only).
+    if (line.length <= 1) continue;
+
+    // Skip exact duplicate of previous line (repeated PDF headers/footers).
+    if (line === lastLine) continue;
+
+    cleaned.push(line);
+    lastLine = line;
+  }
+
+  // Join with single newlines, collapse 3+ blank lines that may have been
+  // implicit, and trim.
+  return cleaned.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * Rough token estimate (chars/4) — close enough for budgeting against the
+ * Groq free-tier TPM cap. We don't pull tiktoken just for this.
+ */
+export function estimateTokens(text: string): number {
+  return Math.ceil((text || '').length / 4);
 }
 
 /**

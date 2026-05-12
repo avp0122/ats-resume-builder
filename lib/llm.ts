@@ -193,7 +193,7 @@ interface GroqCallResult {
  * Call Groq with the ATS prompt. Returns content + finish_reason so callers
  * can distinguish "model decided to stop" from "max_tokens limit hit".
  */
-async function callGroq(prompt: string): Promise<GroqCallResult> {
+async function callGroq(prompt: string, maxTokens: number): Promise<GroqCallResult> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new Error('GROQ_API_KEY not configured');
 
@@ -213,10 +213,7 @@ async function callGroq(prompt: string): Promise<GroqCallResult> {
         },
         { role: 'user', content: prompt },
       ],
-      // Headroom for resume HTML + cover letter + scoring + personalInfo.
-      // Combined with typical ~3000-token input this stays under Groq's
-      // 8000 TPM free tier in most cases.
-      max_tokens: 5500,
+      max_tokens: maxTokens,
       temperature: 0.3,
       top_p: 1,
       stream: false,
@@ -253,7 +250,28 @@ export async function generateATSContent(
 ): Promise<ATSGenerationResult> {
   // Import prompt function dynamically to avoid circular dependencies
   const { getATSPrompt } = await import('./prompts');
+  const { estimateTokens } = await import('./utils');
   const prompt = getATSPrompt(jd, resume);
+
+  // Fit within the Groq free-tier 8000 TPM ceiling: input + max_tokens <= 8000.
+  // Reserve a safety margin so we don't trip the rate limiter on rounding.
+  const TPM_BUDGET = 8000;
+  const SAFETY_MARGIN = 300;
+  const MIN_OUTPUT = 2500; // Below this we cannot reliably fit a resume + cover letter.
+  const MAX_OUTPUT = 5500; // Headroom we believe is enough for full output.
+  const inputTokens = estimateTokens(prompt);
+  const maxTokens = Math.max(
+    MIN_OUTPUT,
+    Math.min(MAX_OUTPUT, TPM_BUDGET - SAFETY_MARGIN - inputTokens)
+  );
+  if (TPM_BUDGET - SAFETY_MARGIN - inputTokens < MIN_OUTPUT) {
+    throw new Error(
+      `Resume + job description are too large for the free-tier rate limit (estimated ${inputTokens} input tokens; max ~${TPM_BUDGET - SAFETY_MARGIN - MIN_OUTPUT} allowed). Trim the resume or job description and try again.`
+    );
+  }
+  console.log(
+    `Token budget: input≈${inputTokens}, max_tokens=${maxTokens}, total≈${inputTokens + maxTokens} (cap ${TPM_BUDGET})`
+  );
 
   const maxRetries = 2;
   let lastError: Error | null = null;
@@ -262,7 +280,7 @@ export async function generateATSContent(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       console.log(`Attempting Groq API call (attempt ${attempt + 1})`);
-      const { content, finishReason } = await callGroq(prompt);
+      const { content, finishReason } = await callGroq(prompt, maxTokens);
 
       if (!content) {
         throw new Error('Empty response from Groq API');
