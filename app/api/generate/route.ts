@@ -8,7 +8,7 @@ import {
   compressText,
   estimateTokens,
 } from '@/lib/utils';
-import { bumpAnonCount, anonDownloadAllowed, FREE_LIMIT } from '@/lib/usage';
+import { bumpAnonCount, readAnonCount, FREE_LIMIT } from '@/lib/usage';
 import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { effectivePlan, signedInFreeDownloadAllowed } from '@/lib/plan';
@@ -88,6 +88,21 @@ export async function POST(request: NextRequest) {
         }
       } catch {
         // Auth optional; continue as anon.
+      }
+    }
+
+    // Early gate for anonymous users: hard cap on generations *before* we
+    // pay for the LLM call. After this they have to sign up.
+    if (!userId) {
+      const currentAnonCount = readAnonCount();
+      if (currentAnonCount >= FREE_LIMIT) {
+        return NextResponse.json(
+          {
+            error:
+              'Free anonymous generation limit reached. Sign up free to get 3 generations per month.',
+          },
+          { status: 403 }
+        );
       }
     }
 
@@ -182,6 +197,8 @@ export async function POST(request: NextRequest) {
           location: pi.location || null,
           date_of_birth: pi.dateOfBirth || null,
           social_links: pi.socialLinks || {},
+          target_role: result.jobRole || null,
+          target_company: result.jobCompany || null,
           client_os: clientOs,
           client_version: clientVersion,
           original_score: result.originalScore,
@@ -194,13 +211,19 @@ export async function POST(request: NextRequest) {
         console.error('Signed-in profile/upload write failed (non-fatal):', e);
       }
     } else {
+      // Anonymous flow: we let the user generate (within ANON_FREE_LIMIT)
+      // and see the ATS scores + matched/missing keywords, but the actual
+      // optimized resume + cover letter are paywalled. They have to sign
+      // up to unlock preview / copy / download.
       usageCount = bumpAnonCount();
-      downloadAllowed = anonDownloadAllowed(usageCount);
-      needsSignin = !downloadAllowed;
+      downloadAllowed = false;
+      needsSignin = true;
     }
 
     return NextResponse.json({
       personalInfo: result.personalInfo,
+      jobRole: result.jobRole,
+      jobCompany: result.jobCompany,
       resume: result.resume,
       coverLetter: result.coverLetter,
       originalScore: result.originalScore,

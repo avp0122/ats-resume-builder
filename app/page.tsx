@@ -11,6 +11,8 @@ import { detectClient, type ClientInfo } from '@/lib/clientInfo';
 
 interface GenerationResult {
   personalInfo: PersonalInfo;
+  jobRole: string;
+  jobCompany: string;
   resume: string;
   coverLetter: string;
   originalScore: number;
@@ -60,7 +62,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('resume');
-  const [showSigninModal, setShowSigninModal] = useState(false);
+  // showSigninModal removed — paywall is now an inline card replacing the
+  // preview, not a modal.
   // `hydrated` flips true once React is fully mounted on the client. Until
   // then we don't accept file-input changes (they'd be lost into a half-
   // hydrated React tree). Belt-and-suspenders: an extra native change
@@ -232,10 +235,9 @@ export default function Home() {
    */
   const downloadZip = useCallback(async () => {
     if (!result) return;
-    if (!result.usage.downloadAllowed) {
-      setShowSigninModal(true);
-      return;
-    }
+    // The download button is only rendered when downloadAllowed is true, but
+    // guard anyway to make the contract explicit.
+    if (!result.usage.downloadAllowed) return;
     setDownloading(true);
     setDownloadError(null);
     try {
@@ -246,22 +248,32 @@ export default function Home() {
       ]);
       const JSZip = JSZipMod.default;
 
-      // Filenames no longer carry the OS slug — that's tracked in
-      // resume_uploads on the server instead, so we can route customization
-      // workflows by client without leaking it in user-facing names.
-      const personSlug =
-        result.personalInfo.fullName.replace(/[^a-z0-9]+/gi, '_').toLowerCase() ||
-        'kresume';
+      // Filename: <role>_<company>_<fullname> so a user who runs multiple
+      // generations against different jobs can tell their downloads apart.
+      // Each component is sanitised + truncated. Any missing piece is just
+      // skipped so the filename stays readable.
+      const slug = (s: string, max = 32) =>
+        s
+          .replace(/[^a-z0-9]+/gi, '_')
+          .replace(/^_+|_+$/g, '')
+          .toLowerCase()
+          .slice(0, max);
+      const parts = [
+        slug(result.jobRole),
+        slug(result.jobCompany),
+        slug(result.personalInfo.fullName),
+      ].filter(Boolean);
+      const baseName = parts.length > 0 ? parts.join('_') : 'kresume';
 
       const zip = new JSZip();
-      zip.file(`${personSlug}_resume.pdf`, resumeBlob);
-      zip.file(`${personSlug}_cover_letter.pdf`, coverBlob);
+      zip.file(`${baseName}_resume.pdf`, resumeBlob);
+      zip.file(`${baseName}_cover_letter.pdf`, coverBlob);
       const zipBlob = await zip.generateAsync({ type: 'blob' });
 
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${personSlug}.zip`;
+      a.download = `${baseName}.zip`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -448,179 +460,179 @@ export default function Home() {
             missing={result.missingKeywords}
           />
 
-          {!result.usage.downloadAllowed && (
-            <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 flex items-start gap-3 text-amber-100 text-sm">
-              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 1a4 4 0 00-4 4v3H5a2 2 0 00-2 2v7a2 2 0 002 2h10a2 2 0 002-2v-7a2 2 0 00-2-2h-1V5a4 4 0 00-4-4z" clipRule="evenodd" />
-              </svg>
-              <div className="flex-1">
-                {result.usage.signedIn ? (
-                  <>
-                    <p className="font-medium">You've used your {result.usage.freeLimit} free generations.</p>
-                    <p className="mt-0.5 text-amber-200/80 text-xs">
-                      Upgrade to Pro for unlimited generations and downloads — $4.99/month, paid in crypto.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="font-medium">You've used your free generation.</p>
-                    <p className="mt-0.5 text-amber-200/80 text-xs">
-                      Sign up free to get 3 generations / month, or upgrade to Pro for unlimited.
-                    </p>
-                  </>
-                )}
+          {result.usage.downloadAllowed ? (
+            <>
+              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
+                <h2 className="text-xl font-semibold tracking-tight text-white">Results</h2>
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <div className="inline-flex bg-white/5 rounded-xl p-1 border border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('resume')}
+                      className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition ${
+                        activeTab === 'resume'
+                          ? 'bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow'
+                          : 'text-white/60 hover:text-white'
+                      }`}
+                    >
+                      Resume
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('cover')}
+                      className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition ${
+                        activeTab === 'cover'
+                          ? 'bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow'
+                          : 'text-white/60 hover:text-white'
+                      }`}
+                    >
+                      Cover letter
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={downloadZip}
+                    disabled={downloading}
+                    title="Downloads a ZIP with the resume and cover letter PDFs"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition shadow bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {downloading ? (
+                      <>
+                        <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.3" strokeWidth="4" />
+                          <path d="M22 12a10 10 0 01-10 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+                        </svg>
+                        Preparing…
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                          <path d="M10 3v10m0 0l-3.5-3.5M10 13l3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        Download .zip
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
-              <Link
-                href={result.usage.signedIn ? '/pricing' : '/signup'}
-                className="px-3 py-1.5 bg-white text-slate-950 rounded-md font-semibold text-xs hover:bg-white/90 transition whitespace-nowrap"
-              >
-                {result.usage.signedIn ? 'Upgrade' : 'Sign up free'}
-              </Link>
-            </div>
-          )}
 
-          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
-            <h2 className="text-xl font-semibold tracking-tight text-white">Results</h2>
-            <div className="flex items-center gap-2 self-start sm:self-auto">
-              <div className="inline-flex bg-white/5 rounded-xl p-1 border border-white/10">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('resume')}
-                  className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition ${
-                    activeTab === 'resume'
-                      ? 'bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow'
-                      : 'text-white/60 hover:text-white'
-                  }`}
-                >
-                  Resume
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('cover')}
-                  className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition ${
-                    activeTab === 'cover'
-                      ? 'bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow'
-                      : 'text-white/60 hover:text-white'
-                  }`}
-                >
-                  Cover letter
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={downloadZip}
-                disabled={downloading}
-                title="Downloads a ZIP with the resume and cover letter PDFs"
-                className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition shadow ${
-                  result.usage.downloadAllowed
-                    ? 'bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 hover:opacity-90'
-                    : 'bg-white/10 text-white/70 hover:bg-white/15'
-                } disabled:opacity-60 disabled:cursor-not-allowed`}
-              >
-                {downloading ? (
-                  <>
-                    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.3" strokeWidth="4" />
-                      <path d="M22 12a10 10 0 01-10 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-                    </svg>
-                    Preparing…
-                  </>
-                ) : result.usage.downloadAllowed ? (
-                  <>
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-                      <path d="M10 3v10m0 0l-3.5-3.5M10 13l3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    Download .zip
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                      <path
-                        fillRule="evenodd"
-                        d="M10 1a4 4 0 00-4 4v3H5a2 2 0 00-2 2v7a2 2 0 002 2h10a2 2 0 002-2v-7a2 2 0 00-2-2h-1V5a4 4 0 00-4-4zm2 7V5a2 2 0 10-4 0v3h4z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    Sign in to download
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+              {downloadError && (
+                <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 text-rose-200 text-sm p-3">
+                  {downloadError}
+                </div>
+              )}
 
-          {downloadError && (
-            <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 text-rose-200 text-sm p-3">
-              {downloadError}
-            </div>
-          )}
-
-          {activeTab === 'resume' ? (
-            <ResumePreview
-              previewHtml={previewResumeHtml}
-              title="ATS-Optimized Resume"
-            />
+              {activeTab === 'resume' ? (
+                <ResumePreview
+                  previewHtml={previewResumeHtml}
+                  title="ATS-Optimized Resume"
+                />
+              ) : (
+                <ResumePreview
+                  previewHtml={previewCoverHtml}
+                  title="Tailored Cover Letter"
+                  copyText={pdfCoverHtml}
+                />
+              )}
+            </>
           ) : (
-            <ResumePreview
-              previewHtml={previewCoverHtml}
-              title="Tailored Cover Letter"
-              copyText={pdfCoverHtml}
-            />
+            <PaywallCard signedIn={result.usage.signedIn} freeLimit={result.usage.freeLimit} />
           )}
         </section>
-      )}
-
-      {showSigninModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setShowSigninModal(false)}>
-          <div
-            className="relative max-w-sm w-full rounded-3xl bg-slate-950 border border-white/10 p-7 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="absolute -inset-1 -z-10 rounded-3xl bg-gradient-to-br from-fuchsia-500/30 via-indigo-500/30 to-sky-400/30 blur-xl" />
-            {result?.usage.signedIn ? (
-              <>
-                <h3 className="text-xl font-bold text-white">Upgrade to Pro</h3>
-                <p className="mt-1 text-sm text-white/60">
-                  You've used your {result.usage.freeLimit} free generations. Pro gives you unlimited generations + downloads for $4.99/month, paid in crypto.
-                </p>
-                <div className="mt-5 grid gap-2.5">
-                  <Link
-                    href="/pricing"
-                    className="block text-center py-2.5 rounded-lg bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 font-semibold hover:opacity-90 transition"
-                  >
-                    See pricing
-                  </Link>
-                </div>
-              </>
-            ) : (
-              <>
-                <h3 className="text-xl font-bold text-white">Sign in to download</h3>
-                <p className="mt-1 text-sm text-white/60">
-                  You've used your free generation. Sign up free to get {result?.usage.freeLimit ?? 3} more per month, or sign in if you already have an account.
-                </p>
-                <div className="mt-5 grid gap-2.5">
-                  <Link
-                    href="/signup"
-                    className="block text-center py-2.5 rounded-lg bg-gradient-to-r from-fuchsia-500 via-indigo-500 to-sky-400 text-white font-semibold hover:opacity-90 transition"
-                  >
-                    Create free account
-                  </Link>
-                  <Link
-                    href="/signin"
-                    className="block text-center py-2.5 rounded-lg bg-white/5 border border-white/10 text-white font-medium hover:bg-white/10 transition"
-                  >
-                    I already have an account
-                  </Link>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
       )}
 
       <footer className="mt-16 mb-6 text-center text-xs text-white/40">
         Built with care. Inputs are processed in-memory and discarded after generation.
       </footer>
     </main>
+  );
+}
+
+function PaywallCard({
+  signedIn,
+  freeLimit,
+}: {
+  signedIn: boolean;
+  freeLimit: number;
+}) {
+  const headline = signedIn
+    ? `You've used your ${freeLimit} free generations`
+    : 'Sign up to unlock the optimized result';
+  const sub = signedIn
+    ? 'Upgrade to Pro for unlimited generations, downloads, copy and preview — $4.99/month, paid in crypto.'
+    : 'Anonymous users see only the ATS score. Create a free account to preview, copy, and download the rewritten resume + cover letter (3 generations / month).';
+  const ctaHref = signedIn ? '/pricing' : '/signup';
+  const ctaLabel = signedIn ? 'Upgrade to Pro' : 'Sign up free';
+  const secondaryHref = signedIn ? null : '/signin';
+
+  return (
+    <div className="relative">
+      <div className="absolute -inset-1 rounded-3xl bg-gradient-to-br from-amber-400/30 via-fuchsia-500/30 to-indigo-500/30 blur-2xl opacity-70 pointer-events-none" />
+      <div className="relative rounded-3xl border border-white/10 bg-slate-950/70 backdrop-blur-xl p-7 sm:p-9 text-center overflow-hidden">
+        <div className="mx-auto h-12 w-12 rounded-full bg-gradient-to-br from-amber-400 via-fuchsia-500 to-indigo-500 grid place-items-center shadow-lg shadow-fuchsia-500/30 mb-4">
+          <svg className="w-5 h-5 text-slate-950" viewBox="0 0 20 20" fill="currentColor">
+            <path
+              fillRule="evenodd"
+              d="M10 1a4 4 0 00-4 4v3H5a2 2 0 00-2 2v7a2 2 0 002 2h10a2 2 0 002-2v-7a2 2 0 00-2-2h-1V5a4 4 0 00-4-4zm2 7V5a2 2 0 10-4 0v3h4z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </div>
+        <h3 className="text-xl sm:text-2xl font-bold text-white">{headline}</h3>
+        <p className="mt-2 text-sm text-white/60 max-w-md mx-auto">{sub}</p>
+
+        <ul className="mt-6 grid sm:grid-cols-2 gap-2 max-w-md mx-auto text-left text-sm text-white/70">
+          <PaywallBullet locked={false}>ATS score (visible)</PaywallBullet>
+          <PaywallBullet locked={false}>Matched / missing keywords</PaywallBullet>
+          <PaywallBullet locked>Optimized resume preview</PaywallBullet>
+          <PaywallBullet locked>Tailored cover letter</PaywallBullet>
+          <PaywallBullet locked>Copy + Download (PDF / ZIP)</PaywallBullet>
+          {signedIn ? (
+            <PaywallBullet locked>Unlimited generations</PaywallBullet>
+          ) : (
+            <PaywallBullet locked>3 generations / month</PaywallBullet>
+          )}
+        </ul>
+
+        <div className="mt-7 flex flex-col sm:flex-row gap-2 justify-center">
+          <Link
+            href={ctaHref}
+            className="inline-flex items-center justify-center px-5 py-2.5 rounded-lg bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 font-semibold hover:opacity-90 transition shadow-lg shadow-fuchsia-500/30"
+          >
+            {ctaLabel}
+          </Link>
+          {secondaryHref && (
+            <Link
+              href={secondaryHref}
+              className="inline-flex items-center justify-center px-5 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white font-medium hover:bg-white/10 transition"
+            >
+              I already have an account
+            </Link>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PaywallBullet({ children, locked }: { children: React.ReactNode; locked: boolean }) {
+  return (
+    <li className={`flex items-start gap-2 ${locked ? 'text-white/50' : 'text-white/85'}`}>
+      {locked ? (
+        <svg className="w-4 h-4 mt-0.5 flex-shrink-0 text-white/40" viewBox="0 0 20 20" fill="currentColor">
+          <path
+            fillRule="evenodd"
+            d="M10 1a4 4 0 00-4 4v3H5a2 2 0 00-2 2v7a2 2 0 002 2h10a2 2 0 002-2v-7a2 2 0 00-2-2h-1V5a4 4 0 00-4-4zm2 7V5a2 2 0 10-4 0v3h4z"
+            clipRule="evenodd"
+          />
+        </svg>
+      ) : (
+        <svg className="w-4 h-4 mt-0.5 flex-shrink-0 text-emerald-400" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.5 7.5a1 1 0 01-1.42 0l-3.5-3.5a1 1 0 011.42-1.42l2.79 2.79 6.79-6.79a1 1 0 011.42 0z" clipRule="evenodd" />
+        </svg>
+      )}
+      <span>{children}</span>
+    </li>
   );
 }
 
