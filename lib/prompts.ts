@@ -38,10 +38,12 @@ WRITE a tailored cover letter (3-4 short paragraphs, <p> tags only).
 - DO NOT include the sender's name or contact at the top — handled by template.
 - Address to "Dear Hiring Manager," unless a specific name is in the JD.
 
-COMPUTE the ATS match score:
-- score: integer 0–100 reflecting how well the rewritten resume matches the JD
-- matchedKeywords: up to 12 JD keywords/phrases the rewritten resume covers
-- missingKeywords: up to 8 important JD keywords the candidate lacks based on the original resume
+COMPUTE TWO ATS match scores against the JD:
+- originalScore: integer 0–100 — how well the candidate's ORIGINAL (uploaded) resume matches the JD
+- score: integer 0–100 — how well the REWRITTEN resume matches the JD
+The rewritten score should generally be higher; the difference reflects the value added by optimization.
+- matchedKeywords: up to 12 JD keywords/phrases the rewritten resume now covers
+- missingKeywords: up to 8 important JD keywords the candidate genuinely lacks (don't fabricate)
 
 OUTPUT (STRICT):
 Return ONLY one JSON object with EXACTLY these keys:
@@ -62,6 +64,7 @@ Return ONLY one JSON object with EXACTLY these keys:
   },
   "resume": "<html string for resume body, NO contact header>",
   "coverLetter": "<html string, no contact header>",
+  "originalScore": <int 0-100>,
   "score": <int 0-100>,
   "matchedKeywords": [<strings>],
   "missingKeywords": [<strings>]

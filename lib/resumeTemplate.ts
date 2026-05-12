@@ -1,15 +1,15 @@
 import type { PersonalInfo } from './llm';
 
+const PDF_WIDTH_PX = 816; // 8.5in × 96dpi — matches html2canvas/letter portrait
+const PDF_PADDING = '48px 56px';
+const PREVIEW_PADDING = '32px 36px';
+
 /**
  * Render a polished, ATS-friendly resume document (single column, no graphics).
  *
- * The HTML returned here is consumed by html2pdf in the browser. Inline styles
- * are used because html2canvas (under the hood) snapshots computed styles.
- *
- * Design goals:
- *   - Single column, text-extractable layout (ATS-safe)
- *   - Clean typographic hierarchy with a subtle accent color
- *   - Contact header at the top so the candidate's identity is unmistakable
+ * Inline styles are mandatory because html2canvas (used by html2pdf) snapshots
+ * computed styles. The wrapper has an explicit pixel width so the document is
+ * rendered correctly even when the wrapper is positioned off-screen.
  */
 export function renderResumeDocument(
   personalInfo: PersonalInfo,
@@ -17,30 +17,33 @@ export function renderResumeDocument(
   variant: 'preview' | 'pdf' = 'pdf'
 ): string {
   const isPdf = variant === 'pdf';
-  const wrapperWidth = isPdf ? 'max-width:8.5in;' : 'max-width:760px;';
-  const padding = isPdf ? 'padding:0.5in 0.6in;' : 'padding:32px 36px;';
+  const widthStyle = isPdf ? `width:${PDF_WIDTH_PX}px;` : 'width:100%;max-width:760px;';
+  const padding = isPdf ? PDF_PADDING : PREVIEW_PADDING;
 
   return `
 <div class="kresume-doc" style="
-  ${wrapperWidth}
+  ${widthStyle}
   margin:0 auto;
-  ${padding}
+  padding:${padding};
   background:#ffffff;
   color:#0f172a;
   font-family:'Inter','Helvetica Neue',Arial,sans-serif;
   font-size:11pt;
   line-height:1.5;
+  box-sizing:border-box;
 ">
-  ${renderHeader(personalInfo)}
+  ${renderResumeHeader(personalInfo)}
   <main style="margin-top:18px;">
-    ${styleBody(bodyHtml)}
+    ${styleResumeBody(bodyHtml)}
   </main>
 </div>
 `;
 }
 
 /**
- * Render a cover letter document with the same header style, suitable for PDF.
+ * Render a cover letter as a plain business letter — minimal styling, just the
+ * sender's name + contact in a small block at top-right, the date, and the
+ * letter body. Intentionally less designed than the resume.
  */
 export function renderCoverLetterDocument(
   personalInfo: PersonalInfo,
@@ -48,35 +51,48 @@ export function renderCoverLetterDocument(
   variant: 'preview' | 'pdf' = 'pdf'
 ): string {
   const isPdf = variant === 'pdf';
-  const wrapperWidth = isPdf ? 'max-width:8.5in;' : 'max-width:760px;';
-  const padding = isPdf ? 'padding:0.5in 0.6in;' : 'padding:32px 36px;';
+  const widthStyle = isPdf ? `width:${PDF_WIDTH_PX}px;` : 'width:100%;max-width:760px;';
+  const padding = isPdf ? PDF_PADDING : PREVIEW_PADDING;
   const today = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   });
 
+  const senderLines = [
+    personalInfo.fullName,
+    personalInfo.email,
+    personalInfo.phone,
+  ]
+    .filter(Boolean)
+    .map(escapeHtml);
+
   return `
 <div class="kresume-doc" style="
-  ${wrapperWidth}
+  ${widthStyle}
   margin:0 auto;
-  ${padding}
+  padding:${padding};
   background:#ffffff;
   color:#0f172a;
   font-family:'Inter','Helvetica Neue',Arial,sans-serif;
   font-size:11pt;
-  line-height:1.6;
+  line-height:1.65;
+  box-sizing:border-box;
 ">
-  ${renderHeader(personalInfo)}
-  <p style="margin:18px 0 12px;color:#475569;font-size:10.5pt;">${escapeHtml(today)}</p>
-  <main>
-    ${styleBody(bodyHtml)}
-  </main>
+  ${
+    senderLines.length
+      ? `<div style="text-align:right;color:#475569;font-size:10pt;line-height:1.4;">
+          ${senderLines.map((l) => `<div>${l}</div>`).join('')}
+        </div>`
+      : ''
+  }
+  <p style="margin:24px 0 24px;color:#475569;font-size:10.5pt;">${escapeHtml(today)}</p>
+  <main>${styleCoverBody(bodyHtml)}</main>
 </div>
 `;
 }
 
-function renderHeader(p: PersonalInfo): string {
+function renderResumeHeader(p: PersonalInfo): string {
   const name = (p.fullName || 'Your Name').trim();
   const contactBits = [p.email, p.phone, p.location].filter(Boolean).map(escapeHtml);
   const links = Object.entries(p.socialLinks || {})
@@ -117,12 +133,7 @@ const SOCIAL_LABELS: Record<string, string> = {
   other: 'Website',
 };
 
-/**
- * Re-style the LLM-generated body HTML with inline section styling.
- * The LLM emits <h2>/<h3>/<p>/<ul>/<li>/<strong>; we wrap them with
- * inline styles so html2canvas captures them in the PDF snapshot.
- */
-function styleBody(html: string): string {
+function styleResumeBody(html: string): string {
   return html
     .replace(
       /<h2(\b[^>]*)>/g,
@@ -143,6 +154,19 @@ function styleBody(html: string): string {
     .replace(
       /<li(\b[^>]*)>/g,
       `<li$1 style="margin:0 0 4px;color:#1e293b;line-height:1.5;">`
+    )
+    .replace(
+      /<strong(\b[^>]*)>/g,
+      `<strong$1 style="color:#0f172a;font-weight:600;">`
+    );
+}
+
+function styleCoverBody(html: string): string {
+  // Cover letter uses minimal styling — just consistent paragraph spacing.
+  return html
+    .replace(
+      /<p(\b[^>]*)>/g,
+      `<p$1 style="margin:0 0 14px;color:#1e293b;line-height:1.7;">`
     )
     .replace(
       /<strong(\b[^>]*)>/g,

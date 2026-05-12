@@ -98,7 +98,7 @@ function CheckoutInner() {
           Pay with crypto
         </h1>
         <p className="mt-2 text-white/60 text-sm">
-          Non-custodial. Funds go directly to our wallet — no payment processor in between.
+          One-time payment in USDT (TRC-20). Pro is unlocked the moment we verify your transaction on-chain.
         </p>
       </header>
 
@@ -158,10 +158,13 @@ function CheckoutInner() {
                 </label>
                 <input
                   value={txHash}
-                  onChange={(e) => setTxHash(e.target.value)}
-                  placeholder="0x… (64 hex characters)"
+                  onChange={(e) => setTxHash(e.target.value.replace(/^0x/i, '').trim())}
+                  placeholder="64 hex characters (e.g. a1b2c3…)"
                   className="w-full px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:border-fuchsia-400 focus:ring-2 focus:ring-fuchsia-400/30 outline-none transition font-mono text-sm"
                 />
+                <p className="mt-1 text-xs text-white/40">
+                  TRC-20 hashes are 64 hex characters with no <code>0x</code> prefix. You can find it in your wallet&apos;s transaction details or on tronscan.org.
+                </p>
                 {verifyError && (
                   <div className="mt-2 text-sm text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-lg p-3">
                     {verifyError}

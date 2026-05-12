@@ -90,22 +90,27 @@ export async function POST(request: NextRequest) {
     if (userId) {
       // Signed in — unlimited for now. Increment counter + opportunistically
       // backfill personal info on the profile (only fields that are still empty).
+      // Use upsert so a missing profile row (e.g. when the auth trigger didn't
+      // fire) self-heals on first interaction.
       try {
         const admin = createSupabaseAdminClient();
         const { data: profile } = await admin
           .from('profiles')
           .select('generations_count, full_name, contact_email, phone, location, date_of_birth, social_links')
           .eq('id', userId)
-          .single();
+          .maybeSingle();
         usageCount = (profile?.generations_count ?? 0) + 1;
 
-        const update: Record<string, unknown> = { generations_count: usageCount };
+        const upsertRow: Record<string, unknown> = {
+          id: userId,
+          generations_count: usageCount,
+        };
         const pi = result.personalInfo;
-        if (pi.fullName && !profile?.full_name) update.full_name = pi.fullName;
-        if (pi.email && !profile?.contact_email) update.contact_email = pi.email;
-        if (pi.phone && !profile?.phone) update.phone = pi.phone;
-        if (pi.location && !profile?.location) update.location = pi.location;
-        if (pi.dateOfBirth && !profile?.date_of_birth) update.date_of_birth = pi.dateOfBirth;
+        if (pi.fullName && !profile?.full_name) upsertRow.full_name = pi.fullName;
+        if (pi.email && !profile?.contact_email) upsertRow.contact_email = pi.email;
+        if (pi.phone && !profile?.phone) upsertRow.phone = pi.phone;
+        if (pi.location && !profile?.location) upsertRow.location = pi.location;
+        if (pi.dateOfBirth && !profile?.date_of_birth) upsertRow.date_of_birth = pi.dateOfBirth;
         const existingLinks =
           profile?.social_links && typeof profile.social_links === 'object'
             ? (profile.social_links as Record<string, string>)
@@ -115,12 +120,12 @@ export async function POST(request: NextRequest) {
           if (v && !mergedLinks[k]) mergedLinks[k] = v;
         }
         if (JSON.stringify(mergedLinks) !== JSON.stringify(existingLinks)) {
-          update.social_links = mergedLinks;
+          upsertRow.social_links = mergedLinks;
         }
 
-        await admin.from('profiles').update(update).eq('id', userId);
-      } catch {
-        // non-fatal
+        await admin.from('profiles').upsert(upsertRow, { onConflict: 'id' });
+      } catch (e) {
+        console.error('Profile upsert failed (non-fatal):', e);
       }
     } else {
       usageCount = bumpAnonCount();
@@ -132,6 +137,7 @@ export async function POST(request: NextRequest) {
       personalInfo: result.personalInfo,
       resume: result.resume,
       coverLetter: result.coverLetter,
+      originalScore: result.originalScore,
       score: result.score,
       matchedKeywords: result.matchedKeywords,
       missingKeywords: result.missingKeywords,
