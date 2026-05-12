@@ -70,6 +70,7 @@ function normalizePersonalInfo(raw: unknown): PersonalInfo {
 
 interface LLMError extends Error {
   statusCode?: number;
+  truncated?: boolean;
 }
 
 /**
@@ -90,48 +91,32 @@ function stripMarkdownFences(text: string): string {
 }
 
 /**
- * Extract JSON from text that might contain extra content
+ * Extract JSON from text that might contain extra content.
+ *
+ * IMPORTANT: a previous version of this helper used "first { ... last }"
+ * to slice out a substring. That silently masked truncated responses by
+ * trimming a broken tail down to the largest valid prefix, which then
+ * parsed as a JSON object missing the truncated keys. We now refuse to
+ * accept text that doesn't end with a closing brace, so callers see a
+ * clear "truncated" error instead of a confusing "missing field" error.
  */
 function extractJSON(text: string): string {
   const cleaned = stripMarkdownFences(text);
-  
-  // Try to find JSON object boundaries
   const startBrace = cleaned.indexOf('{');
-  const lastBrace = cleaned.lastIndexOf('}');
-  
-  if (startBrace === -1 || lastBrace === -1 || lastBrace < startBrace) {
+  if (startBrace === -1) {
     throw new Error('No valid JSON object found in response');
   }
-  
-  // Extract the JSON substring
-  const jsonCandidate = cleaned.substring(startBrace, lastBrace + 1);
-  
-  // Try to fix common JSON issues
-  let fixedJson = jsonCandidate
-    .replace(/,\s*}/g, '}') // Remove trailing commas
-    .replace(/,\s*]/g, ']') // Remove trailing commas in arrays
-    .replace(/\n/g, '\\n') // Escape newlines in strings
-    .replace(/\r/g, '\\r') // Escape carriage returns
-    .replace(/\t/g, '\\t'); // Escape tabs
-  
-  // Try to fix unterminated strings by finding and closing them
-  const stringMatches = fixedJson.match(/("(?:[^"\\]|\\.)*")/g) || [];
-  let lastStringEnd = 0;
-  
-  for (const match of stringMatches) {
-    lastStringEnd = fixedJson.indexOf(match, lastStringEnd) + match.length;
+  const trimmed = cleaned.slice(startBrace).trimEnd();
+  if (!trimmed.endsWith('}')) {
+    const err: LLMError = new Error(
+      'Response ended mid-stream (no closing brace). Likely max_tokens was reached.'
+    );
+    err.truncated = true;
+    throw err;
   }
-  
-  // If there's unterminated string content after the last complete string
-  if (lastStringEnd < fixedJson.length) {
-    const remaining = fixedJson.substring(lastStringEnd);
-    if (remaining.includes('"') === false) {
-      // Close the unterminated string
-      fixedJson = fixedJson.substring(0, lastStringEnd) + '"' + remaining;
-    }
-  }
-  
-  return fixedJson;
+  return trimmed
+    .replace(/,\s*}/g, '}')
+    .replace(/,\s*]/g, ']');
 }
 
 /**
@@ -176,44 +161,46 @@ function parseJSONResponse(text: string): ATSGenerationResult {
       missingKeywords: toStringArray(parsed.missingKeywords),
     };
   } catch (error) {
-    // If JSON parsing fails, try to extract content manually
     console.error('JSON parsing failed:', error);
-    console.error('Raw response:', text.substring(0, 500) + '...');
-    
-    // Fallback: try to extract resume and cover letter manually
-    const resumeMatch = text.match(/"resume"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/s);
-    const coverLetterMatch = text.match(/"coverLetter"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/s);
-    
-    if (resumeMatch && coverLetterMatch) {
-      return {
-        personalInfo: { ...EMPTY_PERSONAL_INFO },
-        resume: resumeMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
-        coverLetter: coverLetterMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
-        originalScore: 0,
-        score: 0,
-        matchedKeywords: [],
-        missingKeywords: [],
-      };
+    console.error('Raw response (first 800 chars):', text.substring(0, 800));
+    console.error('Raw response (last 200 chars):', text.slice(-200));
+
+    // If the upstream (extractJSON) tagged this as truncated, propagate that.
+    if (error instanceof Error && (error as LLMError).truncated) {
+      throw error;
     }
-    
-    throw new Error(`Failed to parse LLM response: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    // Heuristic: response that doesn't end with `}` was almost certainly cut.
+    if (!text.trim().endsWith('}')) {
+      const err: LLMError = new Error(
+        'The AI response was cut off before completing. Try a shorter resume or job description.'
+      );
+      err.truncated = true;
+      throw err;
+    }
+
+    throw new Error(
+      `Failed to parse LLM response: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
   }
 }
 
+interface GroqCallResult {
+  content: string;
+  finishReason: string;
+}
+
 /**
- * Call Groq API with llama3-70b-8192 model
+ * Call Groq with the ATS prompt. Returns content + finish_reason so callers
+ * can distinguish "model decided to stop" from "max_tokens limit hit".
  */
-async function callGroq(prompt: string): Promise<string> {
+async function callGroq(prompt: string): Promise<GroqCallResult> {
   const apiKey = process.env.GROQ_API_KEY;
-  
-  if (!apiKey) {
-    throw new Error('GROQ_API_KEY not configured');
-  }
+  if (!apiKey) throw new Error('GROQ_API_KEY not configured');
 
   const response = await fetch(GROQ_API_URL, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -222,14 +209,14 @@ async function callGroq(prompt: string): Promise<string> {
         {
           role: 'system',
           content:
-            'You are an ATS optimization assistant. You MUST respond with a single valid JSON object containing exactly two string keys: "resume" and "coverLetter". No prose, no markdown fences — JSON only.',
+            'You are an ATS optimization assistant. Respond with a single valid JSON object matching the schema in the user prompt. JSON only — no prose, no markdown fences.',
         },
-        {
-          role: 'user',
-          content: prompt,
-        },
+        { role: 'user', content: prompt },
       ],
-      max_tokens: 4000,
+      // Headroom for resume HTML + cover letter + scoring + personalInfo.
+      // Combined with typical ~3000-token input this stays under Groq's
+      // 8000 TPM free tier in most cases.
+      max_tokens: 5500,
       temperature: 0.3,
       top_p: 1,
       stream: false,
@@ -247,7 +234,10 @@ async function callGroq(prompt: string): Promise<string> {
   }
 
   const data = await response.json();
-  return data.choices?.[0]?.message?.content || '';
+  return {
+    content: data.choices?.[0]?.message?.content || '',
+    finishReason: data.choices?.[0]?.finish_reason || 'stop',
+  };
 }
 
 /**
@@ -272,13 +262,23 @@ export async function generateATSContent(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       console.log(`Attempting Groq API call (attempt ${attempt + 1})`);
-      const response = await callGroq(prompt);
-      
-      if (!response) {
+      const { content, finishReason } = await callGroq(prompt);
+
+      if (!content) {
         throw new Error('Empty response from Groq API');
       }
-      
-      return parseJSONResponse(response);
+
+      // Detect server-side truncation explicitly so we surface a clear error
+      // instead of falling into "missing field" parsing failures.
+      if (finishReason === 'length') {
+        const err: LLMError = new Error(
+          'The AI response exceeded the maximum length. Try a shorter resume or job description.'
+        );
+        err.truncated = true;
+        throw err;
+      }
+
+      return parseJSONResponse(content);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error('Unknown error');
       
