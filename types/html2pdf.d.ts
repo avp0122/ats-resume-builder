@@ -18,6 +18,10 @@ declare module 'html2pdf.js' {
     set: (options: Html2PdfOptions) => Html2PdfInstance;
     from: (element: HTMLElement | Element) => Html2PdfInstance;
     save: () => Promise<void>;
+    /**
+     * Returns the PDF in the requested format. 'blob' yields a Blob, 'datauristring' a string.
+     */
+    output: (type: 'blob' | 'datauristring' | 'arraybuffer') => Promise<Blob | string | ArrayBuffer>;
   };
 
   const html2pdf: () => Html2PdfInstance;
