@@ -6,12 +6,65 @@
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
+export interface PersonalInfo {
+  fullName: string;
+  email: string;
+  phone: string;
+  location: string;
+  dateOfBirth: string; // ISO date or ""
+  socialLinks: {
+    linkedin?: string;
+    github?: string;
+    portfolio?: string;
+    twitter?: string;
+    other?: string;
+  };
+}
+
 export interface ATSGenerationResult {
+  personalInfo: PersonalInfo;
   resume: string;
   coverLetter: string;
   score: number;
   matchedKeywords: string[];
   missingKeywords: string[];
+}
+
+export const EMPTY_PERSONAL_INFO: PersonalInfo = {
+  fullName: '',
+  email: '',
+  phone: '',
+  location: '',
+  dateOfBirth: '',
+  socialLinks: {},
+};
+
+function normalizePersonalInfo(raw: unknown): PersonalInfo {
+  const info = (raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const linksRaw = (info.socialLinks && typeof info.socialLinks === 'object'
+    ? (info.socialLinks as Record<string, unknown>)
+    : {}) as Record<string, unknown>;
+  const link = (k: string) => {
+    const v = str(linksRaw[k]);
+    return v && /^https?:\/\//i.test(v) ? v : '';
+  };
+  const socialLinks: PersonalInfo['socialLinks'] = {};
+  for (const k of ['linkedin', 'github', 'portfolio', 'twitter', 'other'] as const) {
+    const v = link(k);
+    if (v) socialLinks[k] = v;
+  }
+  // Validate dateOfBirth as ISO yyyy-mm-dd
+  const dob = str(info.dateOfBirth);
+  const dobOk = /^\d{4}-\d{2}-\d{2}$/.test(dob);
+  return {
+    fullName: str(info.fullName),
+    email: str(info.email),
+    phone: str(info.phone),
+    location: str(info.location),
+    dateOfBirth: dobOk ? dob : '',
+    socialLinks,
+  };
 }
 
 interface LLMError extends Error {
@@ -91,6 +144,7 @@ function parseJSONResponse(text: string): ATSGenerationResult {
       score?: unknown;
       matchedKeywords?: unknown;
       missingKeywords?: unknown;
+      personalInfo?: unknown;
     };
     try {
       parsed = JSON.parse(text);
@@ -108,6 +162,7 @@ function parseJSONResponse(text: string): ATSGenerationResult {
       Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 20) : [];
 
     return {
+      personalInfo: normalizePersonalInfo(parsed.personalInfo),
       resume: String(parsed.resume),
       coverLetter: String(parsed.coverLetter),
       score,
@@ -125,6 +180,7 @@ function parseJSONResponse(text: string): ATSGenerationResult {
     
     if (resumeMatch && coverLetterMatch) {
       return {
+        personalInfo: { ...EMPTY_PERSONAL_INFO },
         resume: resumeMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
         coverLetter: coverLetterMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
         score: 0,

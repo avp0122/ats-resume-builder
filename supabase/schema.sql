@@ -6,8 +6,17 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   plan text not null default 'free' check (plan in ('free', 'pro')),
   generations_count int not null default 0,
+  full_name text,
+  contact_email text,
+  phone text,
+  location text,
+  date_of_birth date,
+  social_links jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
+
+-- For existing installs, see supabase/migrations/002_personal_info.sql.
+create index if not exists profiles_full_name_idx on public.profiles (lower(full_name));
 
 create table if not exists public.payments (
   id uuid primary key default gen_random_uuid(),
