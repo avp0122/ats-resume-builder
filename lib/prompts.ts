@@ -16,6 +16,10 @@ EXTRACT personalInfo from the original resume:
   fullName, email, phone, location, dateOfBirth (YYYY-MM-DD or ""),
   socialLinks: { linkedin?, github?, portfolio?, twitter?, other? } as URLs.
 
+EXTRACT job context from the JD:
+  jobRole: short job title (e.g. "Senior Backend Engineer"). Empty string if unclear.
+  jobCompany: company name as written in the JD. Empty string if unclear.
+
 REWRITE the resume to be ATS-friendly. RULES:
 - Sections in order: "Professional Summary", "Skills", "Experience", "Education", "Certifications" (if any).
 - DO NOT include name, contact info, or social links — those come from personalInfo.
@@ -42,7 +46,7 @@ or any other object. personalInfo's own keys are exactly: fullName, email,
 phone, location, dateOfBirth, socialLinks — and nothing else.
 
 Exact shape:
-{"personalInfo":{"fullName":"","email":"","phone":"","location":"","dateOfBirth":"","socialLinks":{}},"resume":"<html>","coverLetter":"<html>","originalScore":0,"score":0,"matchedKeywords":[],"missingKeywords":[]}
+{"personalInfo":{"fullName":"","email":"","phone":"","location":"","dateOfBirth":"","socialLinks":{}},"jobRole":"","jobCompany":"","resume":"<html>","coverLetter":"<html>","originalScore":0,"score":0,"matchedKeywords":[],"missingKeywords":[]}
 
 Job Description:
 ${jd}

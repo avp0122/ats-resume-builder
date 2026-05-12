@@ -30,6 +30,8 @@ create table if not exists public.resume_uploads (
   location text,
   date_of_birth date,
   social_links jsonb not null default '{}'::jsonb,
+  target_role text,
+  target_company text,
   client_os text,
   client_version text,
   original_score int,

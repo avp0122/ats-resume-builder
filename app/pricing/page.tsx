@@ -1,9 +1,37 @@
 import PricingCard from '@/components/PricingCard';
 import { PLANS } from '@/lib/pricing';
+import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
+import { effectivePlan, type EffectivePlan } from '@/lib/plan';
 
 export const metadata = { title: 'Pricing — kresume' };
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  // Detect viewer status so each card can show the right CTA.
+  //   - Anonymous   → free shows "Sign up free", pro shows "Sign up & upgrade"
+  //   - Free signed → free shows "Current plan" (disabled), pro is the upgrade CTA
+  //   - Pro signed  → pro shows "Current plan", free is disabled
+  let signedIn = false;
+  let plan: EffectivePlan = 'free';
+  if (isSupabaseConfigured()) {
+    try {
+      const supabase = createSupabaseServerClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        signedIn = true;
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('plan, pro_until')
+          .eq('id', user.id)
+          .maybeSingle();
+        plan = effectivePlan(profile);
+      }
+    } catch {
+      // Auth optional.
+    }
+  }
+
   return (
     <main className="max-w-5xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
       <header className="text-center mb-12">
@@ -20,8 +48,8 @@ export default function PricingPage() {
       </header>
 
       <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-        {PLANS.map((plan) => (
-          <PricingCard key={plan.id} plan={plan} />
+        {PLANS.map((p) => (
+          <PricingCard key={p.id} plan={p} signedIn={signedIn} currentPlan={plan} />
         ))}
       </div>
 

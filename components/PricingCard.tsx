@@ -2,8 +2,17 @@
 
 import Link from 'next/link';
 import type { Plan } from '@/lib/pricing';
+import type { EffectivePlan } from '@/lib/plan';
 
-export default function PricingCard({ plan }: { plan: Plan }) {
+interface PricingCardProps {
+  plan: Plan;
+  /** Is the viewer currently signed in? */
+  signedIn: boolean;
+  /** Their resolved plan (free if signedOut or expired Pro). */
+  currentPlan: EffectivePlan;
+}
+
+export default function PricingCard({ plan, signedIn, currentPlan }: PricingCardProps) {
   const accentRing =
     plan.accent === 'fuchsia'
       ? 'ring-fuchsia-400/40'
@@ -16,11 +25,8 @@ export default function PricingCard({ plan }: { plan: Plan }) {
       : plan.accent === 'amber'
       ? 'from-amber-400/40 via-rose-500/30 to-fuchsia-500/20'
       : 'from-sky-400/30 via-indigo-500/20 to-fuchsia-500/10';
-  const ctaHref = plan.id === 'pro' ? '/checkout?plan=pro' : '/';
-  const ctaClass =
-    plan.id === 'pro'
-      ? 'bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 hover:opacity-90'
-      : 'bg-white/10 hover:bg-white/15 text-white border border-white/10';
+
+  const cta = pickCta(plan, signedIn, currentPlan);
 
   return (
     <div className="relative">
@@ -33,6 +39,11 @@ export default function PricingCard({ plan }: { plan: Plan }) {
         {plan.highlighted && (
           <span className="absolute -top-3 left-7 px-3 py-1 rounded-full bg-gradient-to-r from-amber-400 to-fuchsia-500 text-slate-950 text-xs font-bold tracking-wide">
             BEST VALUE
+          </span>
+        )}
+        {cta.current && (
+          <span className="absolute -top-3 right-7 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-white text-xs font-semibold tracking-wide">
+            CURRENT PLAN
           </span>
         )}
 
@@ -59,13 +70,69 @@ export default function PricingCard({ plan }: { plan: Plan }) {
           ))}
         </ul>
 
-        <Link
-          href={ctaHref}
-          className={`mt-7 block text-center px-4 py-2.5 rounded-lg font-semibold transition ${ctaClass}`}
-        >
-          {plan.cta}
-        </Link>
+        {cta.disabled ? (
+          <button
+            type="button"
+            disabled
+            className="mt-7 block w-full text-center px-4 py-2.5 rounded-lg font-semibold bg-white/5 border border-white/10 text-white/50 cursor-not-allowed"
+          >
+            {cta.label}
+          </button>
+        ) : (
+          <Link
+            href={cta.href}
+            className={`mt-7 block text-center px-4 py-2.5 rounded-lg font-semibold transition ${cta.className}`}
+          >
+            {cta.label}
+          </Link>
+        )}
       </div>
     </div>
   );
+}
+
+interface CtaResolution {
+  label: string;
+  href: string;
+  className: string;
+  disabled?: boolean;
+  current?: boolean;
+}
+
+function pickCta(plan: Plan, signedIn: boolean, currentPlan: EffectivePlan): CtaResolution {
+  const proStyle =
+    'bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 hover:opacity-90';
+  const subtleStyle = 'bg-white/10 hover:bg-white/15 text-white border border-white/10';
+
+  if (plan.id === 'free') {
+    // Free card behaviour:
+    //  - anonymous → Sign up free (goes to /signup)
+    //  - signed-in on free → it's their current plan, nothing to do
+    //  - signed-in on pro  → free is a downgrade; show as disabled
+    if (!signedIn) {
+      return { label: 'Sign up free', href: '/signup', className: subtleStyle };
+    }
+    return { label: 'Current plan', href: '', className: '', disabled: true, current: currentPlan === 'free' };
+  }
+
+  // Pro card behaviour:
+  //  - anonymous → Sign up first, then redirect to checkout
+  //  - signed-in on free → Upgrade with crypto
+  //  - signed-in on pro  → Renew (pre-pays another 30 days)
+  if (!signedIn) {
+    return {
+      label: 'Sign up & upgrade',
+      href: '/signup?next=/checkout?plan=pro',
+      className: proStyle,
+    };
+  }
+  if (currentPlan === 'pro') {
+    return {
+      label: 'Renew Pro',
+      href: '/checkout?plan=pro',
+      className: proStyle,
+      current: true,
+    };
+  }
+  return { label: 'Upgrade with crypto', href: '/checkout?plan=pro', className: proStyle };
 }

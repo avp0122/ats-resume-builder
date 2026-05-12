@@ -23,6 +23,8 @@ export interface PersonalInfo {
 
 export interface ATSGenerationResult {
   personalInfo: PersonalInfo;
+  jobRole: string;
+  jobCompany: string;
   resume: string;
   coverLetter: string;
   originalScore: number;
@@ -132,6 +134,8 @@ function parseJSONResponse(text: string): ATSGenerationResult {
       matchedKeywords?: unknown;
       missingKeywords?: unknown;
       personalInfo?: unknown;
+      jobRole?: unknown;
+      jobCompany?: unknown;
     };
     try {
       parsed = JSON.parse(text);
@@ -171,8 +175,12 @@ function parseJSONResponse(text: string): ATSGenerationResult {
     const toStringArray = (v: unknown): string[] =>
       Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 20) : [];
 
+    const safeStr = (v: unknown): string =>
+      typeof v === 'string' ? v.trim().slice(0, 120) : '';
     return {
       personalInfo: normalizePersonalInfo(parsed.personalInfo),
+      jobRole: safeStr(parsed.jobRole),
+      jobCompany: safeStr(parsed.jobCompany),
       resume: String(parsed.resume),
       coverLetter: String(parsed.coverLetter),
       originalScore,
