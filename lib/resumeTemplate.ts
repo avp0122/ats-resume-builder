@@ -1,11 +1,15 @@
 import type { PersonalInfo } from './llm';
 
-// A4 portrait at 96dpi: 210mm × 297mm = 794px × 1123px.
-const PDF_WIDTH_PX = 794;
-// Keep internal padding minimal; jsPDF margins handle the page edges, and a
-// thick template padding only on the very first page made top/bottom margins
-// asymmetric across paginated PDFs.
-const PDF_PADDING = '0 56px';
+// A4 PDF rendering: jsPDF page is 210mm wide. With the 12mm left/right
+// margin we set in html2pdf options, the actual content area is 186mm.
+// At 96dpi that's ~703px. The wrapper MUST match the content area, not
+// the full page — otherwise html2canvas captures a wider image which
+// jsPDF then tries to scale into the smaller area, clipping the right
+// side and creating an asymmetric left/right margin.
+const PDF_WIDTH_PX = 703;
+// jsPDF margins handle the page edges, so the template only adds a small
+// top/bottom buffer for the very first/last page's start.
+const PDF_PADDING = '0';
 const PREVIEW_PADDING = '32px 36px';
 
 /**
@@ -35,6 +39,8 @@ export function renderResumeDocument(
   font-size:11pt;
   line-height:1.5;
   box-sizing:border-box;
+  overflow-wrap:anywhere;
+  word-break:break-word;
 ">
   ${renderResumeHeader(personalInfo)}
   <main style="margin-top:18px;">
@@ -75,6 +81,8 @@ export function renderCoverLetterDocument(
   font-size:11pt;
   line-height:1.65;
   box-sizing:border-box;
+  overflow-wrap:anywhere;
+  word-break:break-word;
 ">
   <p style="margin:0 0 24px;color:#475569;font-size:10.5pt;">${escapeHtml(today)}</p>
   <main>${styleCoverBody(bodyHtml)}</main>
