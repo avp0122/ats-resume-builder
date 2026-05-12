@@ -1,7 +1,10 @@
 import type { PersonalInfo } from './llm';
 
 const PDF_WIDTH_PX = 816; // 8.5in × 96dpi — matches html2canvas/letter portrait
-const PDF_PADDING = '48px 56px';
+// Keep internal padding minimal; jsPDF margins handle the page edges, and a
+// thick template padding only on the very first page made top/bottom margins
+// asymmetric across paginated PDFs.
+const PDF_PADDING = '0 56px';
 const PREVIEW_PADDING = '32px 36px';
 
 /**
@@ -41,9 +44,9 @@ export function renderResumeDocument(
 }
 
 /**
- * Render a cover letter as a plain business letter — minimal styling, just the
- * sender's name + contact in a small block at top-right, the date, and the
- * letter body. Intentionally less designed than the resume.
+ * Render a cover letter as a plain business letter — date, body paragraphs,
+ * and a "Sincerely, [Name]" sign-off. Intentionally minimal: no header,
+ * no contact block. The sender's identity is the signature at the bottom.
  */
 export function renderCoverLetterDocument(
   personalInfo: PersonalInfo,
@@ -58,14 +61,7 @@ export function renderCoverLetterDocument(
     month: 'long',
     day: 'numeric',
   });
-
-  const senderLines = [
-    personalInfo.fullName,
-    personalInfo.email,
-    personalInfo.phone,
-  ]
-    .filter(Boolean)
-    .map(escapeHtml);
+  const signerName = (personalInfo.fullName || '').trim();
 
   return `
 <div class="kresume-doc" style="
@@ -79,15 +75,12 @@ export function renderCoverLetterDocument(
   line-height:1.65;
   box-sizing:border-box;
 ">
-  ${
-    senderLines.length
-      ? `<div style="text-align:right;color:#475569;font-size:10pt;line-height:1.4;">
-          ${senderLines.map((l) => `<div>${l}</div>`).join('')}
-        </div>`
-      : ''
-  }
-  <p style="margin:24px 0 24px;color:#475569;font-size:10.5pt;">${escapeHtml(today)}</p>
+  <p style="margin:0 0 24px;color:#475569;font-size:10.5pt;">${escapeHtml(today)}</p>
   <main>${styleCoverBody(bodyHtml)}</main>
+  <div style="margin-top:24px;color:#1e293b;line-height:1.7;">
+    <p style="margin:0 0 36px;">Sincerely,</p>
+    ${signerName ? `<p style="margin:0;font-weight:600;color:#0f172a;">${escapeHtml(signerName)}</p>` : ''}
+  </div>
 </div>
 `;
 }
@@ -134,18 +127,20 @@ const SOCIAL_LABELS: Record<string, string> = {
 };
 
 function styleResumeBody(html: string): string {
+  // page-break-inside:avoid keeps headings + bullets from splitting awkwardly
+  // across PDF pages.
   return html
     .replace(
       /<h2(\b[^>]*)>/g,
-      `<h2$1 style="margin:18px 0 6px;font-size:12.5pt;font-weight:700;color:#4f46e5;text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid #e2e8f0;padding-bottom:4px;">`
+      `<h2$1 style="margin:18px 0 6px;font-size:12.5pt;font-weight:700;color:#4f46e5;text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid #e2e8f0;padding-bottom:4px;page-break-after:avoid;break-after:avoid;">`
     )
     .replace(
       /<h3(\b[^>]*)>/g,
-      `<h3$1 style="margin:10px 0 2px;font-size:11.5pt;font-weight:600;color:#0f172a;">`
+      `<h3$1 style="margin:10px 0 2px;font-size:11.5pt;font-weight:600;color:#0f172a;page-break-after:avoid;break-after:avoid;">`
     )
     .replace(
       /<p(\b[^>]*)>/g,
-      `<p$1 style="margin:0 0 8px;color:#1e293b;line-height:1.55;">`
+      `<p$1 style="margin:0 0 8px;color:#1e293b;line-height:1.55;page-break-inside:avoid;break-inside:avoid;">`
     )
     .replace(
       /<ul(\b[^>]*)>/g,
@@ -153,7 +148,7 @@ function styleResumeBody(html: string): string {
     )
     .replace(
       /<li(\b[^>]*)>/g,
-      `<li$1 style="margin:0 0 4px;color:#1e293b;line-height:1.5;">`
+      `<li$1 style="margin:0 0 4px;color:#1e293b;line-height:1.5;page-break-inside:avoid;break-inside:avoid;">`
     )
     .replace(
       /<strong(\b[^>]*)>/g,
@@ -162,11 +157,12 @@ function styleResumeBody(html: string): string {
 }
 
 function styleCoverBody(html: string): string {
-  // Cover letter uses minimal styling — just consistent paragraph spacing.
+  // Cover letter uses minimal styling — just consistent paragraph spacing,
+  // and avoid splitting a paragraph across pages.
   return html
     .replace(
       /<p(\b[^>]*)>/g,
-      `<p$1 style="margin:0 0 14px;color:#1e293b;line-height:1.7;">`
+      `<p$1 style="margin:0 0 14px;color:#1e293b;line-height:1.7;page-break-inside:avoid;break-inside:avoid;">`
     )
     .replace(
       /<strong(\b[^>]*)>/g,

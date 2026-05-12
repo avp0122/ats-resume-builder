@@ -99,7 +99,10 @@ export default function Home() {
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
     const opt = {
-      margin: [10, 0, 10, 0] as [number, number, number, number],
+      // Uniform 0.5in margin on every page (top/right/bottom/left). jsPDF
+      // applies this to all pages so multi-page PDFs don't have content
+      // touching the page edges.
+      margin: [0.5, 0.5, 0.5, 0.5] as [number, number, number, number],
       filename,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: {
@@ -108,8 +111,9 @@ export default function Home() {
         backgroundColor: '#ffffff',
         windowWidth: 816,
       },
-      jsPDF: { unit: 'pt', format: 'letter', orientation: 'portrait' as const },
-      pagebreak: { mode: ['css', 'legacy'] as any },
+      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as const },
+      // avoid-all keeps elements with break-inside:avoid intact on page splits.
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as any },
     };
 
     const { default: html2pdf } = await import('html2pdf.js');
@@ -118,10 +122,6 @@ export default function Home() {
     } finally {
       wrapper.remove();
     }
-  }, []);
-
-  const copyToClipboard = useCallback((html: string) => {
-    navigator.clipboard.writeText(html).catch(() => {});
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -404,8 +404,8 @@ export default function Home() {
               title="ATS-Optimized Resume"
               filename={resumeFilename}
               downloadAllowed={result.usage.downloadAllowed}
+              copyMode="none"
               onDownload={downloadPDF}
-              onCopy={copyToClipboard}
               onLockedAction={() => setShowSigninModal(true)}
             />
           ) : (
@@ -415,8 +415,8 @@ export default function Home() {
               title="Tailored Cover Letter"
               filename={coverFilename}
               downloadAllowed={result.usage.downloadAllowed}
+              copyMode="text"
               onDownload={downloadPDF}
-              onCopy={copyToClipboard}
               onLockedAction={() => setShowSigninModal(true)}
             />
           )}
