@@ -4,6 +4,7 @@ import './globals.css';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import RouteProgress from '@/components/RouteProgress';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 export const metadata: Metadata = {
   title: 'kresume — AI ATS resume & cover letter generator',
@@ -31,6 +32,7 @@ export default function RootLayout({
         <Navbar />
         <div className="flex-1">{children}</div>
         <Footer />
+        <SpeedInsights />
       </body>
     </html>
   );
