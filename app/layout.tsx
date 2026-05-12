@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import './globals.css';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import RouteProgress from '@/components/RouteProgress';
 
 export const metadata: Metadata = {
   title: 'kresume — AI ATS resume & cover letter generator',
@@ -23,6 +25,9 @@ export default function RootLayout({
       </head>
       <body className="antialiased min-h-screen text-white flex flex-col">
         <div className="app-aurora" aria-hidden />
+        <Suspense fallback={null}>
+          <RouteProgress />
+        </Suspense>
         <Navbar />
         <div className="flex-1">{children}</div>
         <Footer />
