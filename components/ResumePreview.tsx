@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 
+type CopyMode = 'none' | 'html' | 'text';
+
 interface ResumePreviewProps {
   /** Styled HTML rendered inside the preview pane (with contact header). */
   previewHtml: string;
@@ -10,8 +12,9 @@ interface ResumePreviewProps {
   title: string;
   filename: string;
   downloadAllowed: boolean;
+  /** Which copy button to show (if any). */
+  copyMode?: CopyMode;
   onDownload: (html: string, filename: string) => void;
-  onCopy?: (html: string) => void;
   onLockedAction?: () => void;
 }
 
@@ -21,21 +24,26 @@ export default function ResumePreview({
   title,
   filename,
   downloadAllowed,
+  copyMode = 'none',
   onDownload,
-  onCopy,
   onLockedAction,
 }: ResumePreviewProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    if (!onCopy) return;
+    if (copyMode === 'none') return;
     if (!downloadAllowed) {
       onLockedAction?.();
       return;
     }
-    onCopy(downloadHtml);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    const value = copyMode === 'text' ? htmlToPlainText(downloadHtml) : downloadHtml;
+    navigator.clipboard
+      .writeText(value)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => {});
   };
 
   const handleDownload = () => {
@@ -46,17 +54,19 @@ export default function ResumePreview({
     onDownload(downloadHtml, filename);
   };
 
+  const copyLabel = copyMode === 'text' ? 'Copy text' : 'Copy HTML';
+
   return (
     <div className="rounded-3xl border border-white/10 bg-slate-950/60 backdrop-blur-xl overflow-hidden shadow-2xl">
       <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 bg-white/5">
         <h3 className="text-sm font-semibold text-white tracking-tight">{title}</h3>
         <div className="flex gap-2">
-          {onCopy && (
+          {copyMode !== 'none' && (
             <button
               onClick={handleCopy}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white/80 bg-white/5 border border-white/10 rounded-md hover:bg-white/10 transition"
             >
-              {copied ? '✓ Copied' : 'Copy HTML'}
+              {copied ? '✓ Copied' : copyLabel}
             </button>
           )}
           <button
@@ -101,4 +111,17 @@ export default function ResumePreview({
       </div>
     </div>
   );
+}
+
+/**
+ * Convert document HTML to plain text suitable for clipboard / pasting into
+ * an email. Uses the browser's text rendering so <p>, <br>, <li> become
+ * proper newlines.
+ */
+function htmlToPlainText(html: string): string {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  // innerText respects line breaks introduced by block elements.
+  const text = (div as HTMLElement).innerText || div.textContent || '';
+  return text.replace(/\n{3,}/g, '\n\n').trim();
 }

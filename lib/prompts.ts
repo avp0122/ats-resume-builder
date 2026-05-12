@@ -29,21 +29,27 @@ REWRITE the resume to be ATS-friendly:
 - DO NOT include the candidate's name, contact info, or social links in the resume HTML — those come from personalInfo.
 - No tables, columns, graphics, icons, headers/footers
 - Match JD keywords naturally (no keyword stuffing)
+- IMPORTANT: only use skills, tools, and experiences that are actually present in the candidate's original resume. Do not fabricate experience the candidate doesn't have.
 - Standard date format: "MMM YYYY – MMM YYYY"
 - Bullet points: strong action verbs + quantified results
 - Plain HTML only: <h2>, <h3>, <p>, <ul>, <li>, <strong>
 - Use <h2> for section headings, <h3> for job titles or sub-sections
 
 WRITE a tailored cover letter (3-4 short paragraphs, <p> tags only).
-- DO NOT include the sender's name or contact at the top — handled by template.
+- DO NOT include the sender's name, contact info, or address block at the top — handled by template.
+- DO NOT include a sign-off ("Sincerely", "Best regards", signature line) at the bottom — handled by template.
 - Address to "Dear Hiring Manager," unless a specific name is in the JD.
+- Body only: opening paragraph, 1-2 substance paragraphs, closing paragraph.
 
 COMPUTE TWO ATS match scores against the JD:
 - originalScore: integer 0–100 — how well the candidate's ORIGINAL (uploaded) resume matches the JD
 - score: integer 0–100 — how well the REWRITTEN resume matches the JD
 The rewritten score should generally be higher; the difference reflects the value added by optimization.
-- matchedKeywords: up to 12 JD keywords/phrases the rewritten resume now covers
-- missingKeywords: up to 8 important JD keywords the candidate genuinely lacks (don't fabricate)
+
+KEYWORD CONSISTENCY (very important):
+- matchedKeywords: a keyword belongs here ONLY IF it literally appears in the rewritten resume HTML you produced above. Do a final check before listing.
+- missingKeywords: important JD keywords the candidate does NOT have in their background AND therefore are NOT in the rewritten resume. A keyword cannot appear in BOTH lists.
+- If a JD keyword is missing from the candidate's background, you MUST NOT list it as matched and MUST NOT inject it into the rewritten resume.
 
 OUTPUT (STRICT):
 Return ONLY one JSON object with EXACTLY these keys:
