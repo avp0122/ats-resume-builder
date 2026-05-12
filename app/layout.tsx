@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
 
 export const metadata: Metadata = {
   title: 'kresume — AI ATS resume & cover letter generator',
@@ -20,10 +21,11 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
         />
       </head>
-      <body className="antialiased min-h-screen text-white">
+      <body className="antialiased min-h-screen text-white flex flex-col">
         <div className="app-aurora" aria-hidden />
         <Navbar />
-        {children}
+        <div className="flex-1">{children}</div>
+        <Footer />
       </body>
     </html>
   );

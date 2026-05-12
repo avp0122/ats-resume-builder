@@ -12,6 +12,7 @@ interface GenerationResult {
   personalInfo: PersonalInfo;
   resume: string;
   coverLetter: string;
+  originalScore: number;
   score: number;
   matchedKeywords: string[];
   missingKeywords: string[];
@@ -79,26 +80,41 @@ export default function Home() {
   const downloadPDF = useCallback(async (htmlContent: string, filename: string) => {
     // The htmlContent passed in is already a fully styled document
     // (rendered via renderResumeDocument / renderCoverLetterDocument).
+    // Mount it visibly off-screen with an explicit width so html2canvas can
+    // measure and snapshot the layout — invisible/zero-width parents render
+    // blank PDFs.
     const wrapper = document.createElement('div');
-    wrapper.innerHTML = htmlContent;
-    // Off-screen so html2canvas can capture without affecting layout.
-    wrapper.style.position = 'fixed';
-    wrapper.style.left = '-10000px';
+    wrapper.style.position = 'absolute';
     wrapper.style.top = '0';
+    wrapper.style.left = '0';
+    wrapper.style.width = '816px'; // 8.5in * 96dpi
+    wrapper.style.background = '#ffffff';
+    wrapper.style.zIndex = '-1';
+    wrapper.style.opacity = '0';
+    wrapper.style.pointerEvents = 'none';
+    wrapper.innerHTML = htmlContent;
     document.body.appendChild(wrapper);
 
+    // Yield to the browser so layout/fonts settle before snapshot.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
     const opt = {
-      margin: 0,
+      margin: [10, 0, 10, 0] as [number, number, number, number],
       filename,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as const },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as any },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        windowWidth: 816,
+      },
+      jsPDF: { unit: 'pt', format: 'letter', orientation: 'portrait' as const },
+      pagebreak: { mode: ['css', 'legacy'] as any },
     };
 
     const { default: html2pdf } = await import('html2pdf.js');
     try {
-      await html2pdf().set(opt).from(wrapper).save();
+      await html2pdf().set(opt).from(wrapper.firstElementChild || wrapper).save();
     } finally {
       wrapper.remove();
     }
@@ -327,6 +343,7 @@ export default function Home() {
       {result && (
         <section className="mt-10 space-y-6">
           <ATSScore
+            originalScore={result.originalScore}
             score={result.score}
             matched={result.matchedKeywords}
             missing={result.missingKeywords}

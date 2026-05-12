@@ -25,6 +25,7 @@ export interface ATSGenerationResult {
   personalInfo: PersonalInfo;
   resume: string;
   coverLetter: string;
+  originalScore: number;
   score: number;
   matchedKeywords: string[];
   missingKeywords: string[];
@@ -142,6 +143,7 @@ function parseJSONResponse(text: string): ATSGenerationResult {
       resume?: unknown;
       coverLetter?: unknown;
       score?: unknown;
+      originalScore?: unknown;
       matchedKeywords?: unknown;
       missingKeywords?: unknown;
       personalInfo?: unknown;
@@ -157,7 +159,10 @@ function parseJSONResponse(text: string): ATSGenerationResult {
       throw new Error('Invalid response structure: missing resume or coverLetter');
     }
 
-    const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
+    const clampScore = (v: unknown) =>
+      Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+    const score = clampScore(parsed.score);
+    const originalScore = clampScore(parsed.originalScore);
     const toStringArray = (v: unknown): string[] =>
       Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 20) : [];
 
@@ -165,6 +170,7 @@ function parseJSONResponse(text: string): ATSGenerationResult {
       personalInfo: normalizePersonalInfo(parsed.personalInfo),
       resume: String(parsed.resume),
       coverLetter: String(parsed.coverLetter),
+      originalScore,
       score,
       matchedKeywords: toStringArray(parsed.matchedKeywords),
       missingKeywords: toStringArray(parsed.missingKeywords),
@@ -183,6 +189,7 @@ function parseJSONResponse(text: string): ATSGenerationResult {
         personalInfo: { ...EMPTY_PERSONAL_INFO },
         resume: resumeMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
         coverLetter: coverLetterMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
+        originalScore: 0,
         score: 0,
         matchedKeywords: [],
         missingKeywords: [],

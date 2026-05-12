@@ -25,14 +25,10 @@ export default function PricingPage() {
         ))}
       </div>
 
-      <div className="mt-14 grid md:grid-cols-3 gap-4 text-center text-sm text-white/60">
+      <div className="mt-14 grid md:grid-cols-2 gap-4 text-center text-sm text-white/60 max-w-2xl mx-auto">
         <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-5">
           <div className="text-2xl mb-2">⚡</div>
           <p>Lifetime access. No subscriptions, no auto-renew.</p>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-5">
-          <div className="text-2xl mb-2">🔒</div>
-          <p>Non-custodial crypto. Funds go directly to our wallet, never a middleman.</p>
         </div>
         <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-5">
           <div className="text-2xl mb-2">🪪</div>
