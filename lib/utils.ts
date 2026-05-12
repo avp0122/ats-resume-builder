@@ -91,9 +91,13 @@ export function formatErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     const msg = error.message;
 
+    // Truncated response from the LLM — actionable, distinct from rate limits.
+    if (/exceeded the maximum length|cut off before completing|max_tokens/i.test(msg)) {
+      return 'The AI response was too long. Try a shorter resume or job description and retry.';
+    }
     // Surface rate-limit / payload-size errors clearly — these are actionable.
     if (msg.includes('413') || /payload too large/i.test(msg) || /tokens per minute|TPM/i.test(msg)) {
-      return 'Your request exceeded the AI provider\'s rate limit. Try a shorter resume or job description, or wait a minute and retry.';
+      return "Your request exceeded the AI provider's rate limit. Try a shorter resume or job description, or wait a minute and retry.";
     }
     if (msg.includes('429') || /rate limit/i.test(msg)) {
       return 'Too many requests right now. Please wait a moment and try again.';
