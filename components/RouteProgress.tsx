@@ -34,8 +34,16 @@ export default function RouteProgress() {
       if (href.startsWith('#')) return;
       start();
     };
+    // Programmatic navigation (router.push from forms etc.) doesn't trigger
+    // the click handler. Components fire this event before calling push so
+    // the bar starts in the same frame as the action.
+    const onProgrammatic = () => start();
     document.addEventListener('click', onClick);
-    return () => document.removeEventListener('click', onClick);
+    window.addEventListener('kresume:nav-start', onProgrammatic);
+    return () => {
+      document.removeEventListener('click', onClick);
+      window.removeEventListener('kresume:nav-start', onProgrammatic);
+    };
   }, []);
 
   // Settle the bar when the route actually changes.

@@ -15,5 +15,17 @@ export async function POST(request: NextRequest) {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  // Supabase's anti-enumeration behavior returns a "user" object even when
+  // the email already exists — but with an empty `identities` array. Detect
+  // that so we don't silently show a "check your inbox" message for an
+  // already-registered email.
+  if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+    return NextResponse.json(
+      { error: 'An account with that email already exists. Try signing in instead.' },
+      { status: 409 }
+    );
+  }
+
   return NextResponse.json({ user: data.user });
 }

@@ -36,7 +36,12 @@ SCORING — compute against the JD:
 - missingKeywords: up to 8 important JD keywords the candidate genuinely lacks (and therefore are NOT in the rewritten resume).
 - A keyword may NEVER appear in both lists.
 
-OUTPUT (STRICT): one JSON object, no markdown, no prose, this shape:
+OUTPUT (STRICT): one JSON object, no markdown, no prose. The seven keys
+listed below MUST be at the TOP level. DO NOT nest them inside personalInfo
+or any other object. personalInfo's own keys are exactly: fullName, email,
+phone, location, dateOfBirth, socialLinks — and nothing else.
+
+Exact shape:
 {"personalInfo":{"fullName":"","email":"","phone":"","location":"","dateOfBirth":"","socialLinks":{}},"resume":"<html>","coverLetter":"<html>","originalScore":0,"score":0,"matchedKeywords":[],"missingKeywords":[]}
 
 Job Description:
