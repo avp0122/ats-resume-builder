@@ -2,63 +2,131 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom styles for ATS Resume Generator */
+:root {
+  color-scheme: dark;
+}
 
+html,
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: #050314;
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Preview pane styling */
-.prose h1 {
-  font-size: 1.875rem;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-  color: #1a1a1a;
+/* Animated colorful background */
+.app-aurora {
+  position: fixed;
+  inset: -10vh -10vw;
+  z-index: -1;
+  background:
+    radial-gradient(40vw 40vw at 15% 20%, rgba(217, 70, 239, 0.35), transparent 60%),
+    radial-gradient(40vw 40vw at 85% 30%, rgba(56, 189, 248, 0.30), transparent 60%),
+    radial-gradient(50vw 50vw at 50% 110%, rgba(251, 191, 36, 0.25), transparent 60%),
+    radial-gradient(50vw 50vw at 80% 90%, rgba(99, 102, 241, 0.30), transparent 60%),
+    #050314;
+  filter: saturate(1.1);
+  animation: aurora 22s ease-in-out infinite alternate;
 }
 
-.prose h2 {
+@keyframes aurora {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(2%, -2%, 0) scale(1.04); }
+  100% { transform: translate3d(-2%, 2%, 0) scale(1); }
+}
+
+/* Subtle grid overlay on top of aurora */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(60vw 60vh at 50% 30%, #000 30%, transparent 80%);
+}
+
+/* Preview pane typography (renders inside white card) */
+.prose-preview h1 {
   font-size: 1.5rem;
+  font-weight: 700;
+  margin: 1rem 0 0.5rem;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.35rem;
+}
+.prose-preview h1:first-child { margin-top: 0; }
+.prose-preview h2 {
+  font-size: 1.15rem;
   font-weight: 600;
-  margin-top: 1rem;
-  margin-bottom: 0.5rem;
-  color: #2d2d2d;
+  margin: 0.9rem 0 0.4rem;
+  color: #1e293b;
 }
-
-.prose h3 {
-  font-size: 1.25rem;
+.prose-preview h3 {
+  font-size: 1rem;
   font-weight: 600;
-  margin-top: 0.75rem;
-  margin-bottom: 0.25rem;
-  color: #3d3d3d;
+  margin: 0.7rem 0 0.25rem;
+  color: #334155;
 }
-
-.prose p {
-  margin-bottom: 0.5rem;
-  line-height: 1.6;
+.prose-preview p {
+  margin: 0 0 0.6rem;
+  line-height: 1.65;
+  color: #334155;
 }
-
-.prose ul {
+.prose-preview ul {
   list-style-type: disc;
   padding-left: 1.25rem;
-  margin-bottom: 0.5rem;
+  margin: 0 0 0.6rem;
 }
-
-.prose li {
+.prose-preview li {
   margin-bottom: 0.25rem;
-  line-height: 1.5;
+  line-height: 1.6;
+  color: #334155;
+}
+.prose-preview strong { color: #0f172a; }
+
+.preview-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.preview-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+  border: 2px solid #ffffff;
+}
+.preview-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* File-drop card */
+.file-drop {
+  border: 1.5px dashed rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  transition: all 0.18s ease;
+}
+.file-drop:hover {
+  border-color: rgba(217, 70, 239, 0.6);
+  background: rgba(217, 70, 239, 0.06);
+}
+.file-drop.has-file {
+  border-style: solid;
+  border-color: rgba(52, 211, 153, 0.6);
+  background: rgba(16, 185, 129, 0.08);
 }
 
-/* Responsive adjustments */
+/* Animated gradient text helper */
+.gradient-text {
+  background: linear-gradient(90deg, #fcd34d, #f0abfc, #67e8f9, #fcd34d);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 6s linear infinite;
+}
+@keyframes shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 300% 50%; }
+}
+
 @media (max-width: 640px) {
-  .prose h1 {
-    font-size: 1.5rem;
-  }
-  
-  .prose h2 {
-    font-size: 1.25rem;
-  }
-  
-  .prose h3 {
-    font-size: 1.125rem;
-  }
+  .prose-preview h1 { font-size: 1.25rem; }
 }

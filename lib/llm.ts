@@ -9,6 +9,9 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 export interface ATSGenerationResult {
   resume: string;
   coverLetter: string;
+  score: number;
+  matchedKeywords: string[];
+  missingKeywords: string[];
 }
 
 interface LLMError extends Error {
@@ -33,24 +36,104 @@ function stripMarkdownFences(text: string): string {
 }
 
 /**
+ * Extract JSON from text that might contain extra content
+ */
+function extractJSON(text: string): string {
+  const cleaned = stripMarkdownFences(text);
+  
+  // Try to find JSON object boundaries
+  const startBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  
+  if (startBrace === -1 || lastBrace === -1 || lastBrace < startBrace) {
+    throw new Error('No valid JSON object found in response');
+  }
+  
+  // Extract the JSON substring
+  const jsonCandidate = cleaned.substring(startBrace, lastBrace + 1);
+  
+  // Try to fix common JSON issues
+  let fixedJson = jsonCandidate
+    .replace(/,\s*}/g, '}') // Remove trailing commas
+    .replace(/,\s*]/g, ']') // Remove trailing commas in arrays
+    .replace(/\n/g, '\\n') // Escape newlines in strings
+    .replace(/\r/g, '\\r') // Escape carriage returns
+    .replace(/\t/g, '\\t'); // Escape tabs
+  
+  // Try to fix unterminated strings by finding and closing them
+  const stringMatches = fixedJson.match(/("(?:[^"\\]|\\.)*")/g) || [];
+  let lastStringEnd = 0;
+  
+  for (const match of stringMatches) {
+    lastStringEnd = fixedJson.indexOf(match, lastStringEnd) + match.length;
+  }
+  
+  // If there's unterminated string content after the last complete string
+  if (lastStringEnd < fixedJson.length) {
+    const remaining = fixedJson.substring(lastStringEnd);
+    if (remaining.includes('"') === false) {
+      // Close the unterminated string
+      fixedJson = fixedJson.substring(0, lastStringEnd) + '"' + remaining;
+    }
+  }
+  
+  return fixedJson;
+}
+
+/**
  * Safely parse JSON from LLM response
  */
 function parseJSONResponse(text: string): ATSGenerationResult {
-  const cleaned = stripMarkdownFences(text);
-  
   try {
-    const parsed = JSON.parse(cleaned);
-    
+    let parsed: {
+      resume?: unknown;
+      coverLetter?: unknown;
+      score?: unknown;
+      matchedKeywords?: unknown;
+      missingKeywords?: unknown;
+    };
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      const jsonString = extractJSON(text);
+      parsed = JSON.parse(jsonString);
+    }
+
     if (!parsed.resume || !parsed.coverLetter) {
       throw new Error('Invalid response structure: missing resume or coverLetter');
     }
-    
+
+    const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
+    const toStringArray = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 20) : [];
+
     return {
       resume: String(parsed.resume),
       coverLetter: String(parsed.coverLetter),
+      score,
+      matchedKeywords: toStringArray(parsed.matchedKeywords),
+      missingKeywords: toStringArray(parsed.missingKeywords),
     };
   } catch (error) {
-    throw new Error(`Failed to parse LLM response as JSON: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    // If JSON parsing fails, try to extract content manually
+    console.error('JSON parsing failed:', error);
+    console.error('Raw response:', text.substring(0, 500) + '...');
+    
+    // Fallback: try to extract resume and cover letter manually
+    const resumeMatch = text.match(/"resume"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/s);
+    const coverLetterMatch = text.match(/"coverLetter"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/s);
+    
+    if (resumeMatch && coverLetterMatch) {
+      return {
+        resume: resumeMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
+        coverLetter: coverLetterMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
+        score: 0,
+        matchedKeywords: [],
+        missingKeywords: [],
+      };
+    }
+    
+    throw new Error(`Failed to parse LLM response: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
@@ -74,14 +157,20 @@ async function callGroq(prompt: string): Promise<string> {
       model: 'openai/gpt-oss-120b',
       messages: [
         {
+          role: 'system',
+          content:
+            'You are an ATS optimization assistant. You MUST respond with a single valid JSON object containing exactly two string keys: "resume" and "coverLetter". No prose, no markdown fences — JSON only.',
+        },
+        {
           role: 'user',
           content: prompt,
         },
       ],
-      max_tokens: 2500,
+      max_tokens: 4000,
       temperature: 0.3,
       top_p: 1,
       stream: false,
+      response_format: { type: 'json_object' },
     }),
   });
 

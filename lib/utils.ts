@@ -1,10 +1,12 @@
 /**
  * ATS Resume & Cover Letter Generator - Utility Functions
  * 
- * Helper functions for JSON sanitization, HTML validation, and hashing.
+ * Helper functions for JSON sanitization, HTML validation, hashing, and file processing.
  */
 
 import { createHash as createCryptoHash } from 'crypto';
+import mammoth from 'mammoth';
+import { PdfReader } from 'pdfreader';
 
 /**
  * Create a SHA-256 hash of input string for caching
@@ -87,16 +89,27 @@ export function createContentHash(jd: string, resume: string): string {
  */
 export function formatErrorMessage(error: unknown): string {
   if (error instanceof Error) {
-    // Don't expose internal API details to users
-    if (error.message.includes('API')) {
-      return 'Failed to connect to AI service. Please check your internet connection and try again.';
+    const msg = error.message;
+
+    // Surface rate-limit / payload-size errors clearly — these are actionable.
+    if (msg.includes('413') || /payload too large/i.test(msg) || /tokens per minute|TPM/i.test(msg)) {
+      return 'Your request exceeded the AI provider\'s rate limit. Try a shorter resume or job description, or wait a minute and retry.';
     }
-    if (error.message.includes('parse') || error.message.includes('JSON')) {
+    if (msg.includes('429') || /rate limit/i.test(msg)) {
+      return 'Too many requests right now. Please wait a moment and try again.';
+    }
+    if (/GROQ_API_KEY|api key/i.test(msg)) {
+      return 'AI provider is not configured. Add GROQ_API_KEY to your .env.local and restart the dev server.';
+    }
+    if (/ENOTFOUND|ECONNREFUSED|fetch failed|network/i.test(msg)) {
+      return 'Failed to reach the AI service. Check your internet connection and try again.';
+    }
+    if (msg.includes('parse') || msg.includes('JSON')) {
       return 'Received invalid response from AI service. Please try again.';
     }
-    return error.message;
+    return msg;
   }
-  
+
   return 'An unexpected error occurred. Please try again.';
 }
 
@@ -121,4 +134,58 @@ export function validateInputs(jd: string, resume: string): { valid: boolean; er
   }
   
   return { valid: true };
+}
+
+/**
+ * Extract text from PDF file buffer
+ */
+export async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const pdfReader = new PdfReader();
+    let text = '';
+
+    pdfReader.parseBuffer(Buffer.from(buffer), (err, item) => {
+      if (err) {
+        reject(new Error(`Failed to extract text from PDF: ${err}`));
+        return;
+      }
+
+      if (!item) {
+        // End of file
+        resolve(text.trim());
+        return;
+      }
+
+      if (item.text) {
+        text += item.text + ' ';
+      }
+    });
+  });
+}
+
+/**
+ * Extract text from DOCX file buffer
+ */
+export async function extractTextFromDOCX(buffer: ArrayBuffer): Promise<string> {
+  try {
+    const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+    return result.value.trim();
+  } catch (error) {
+    throw new Error(`Failed to extract text from DOCX: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Extract text from uploaded file
+ */
+export async function extractTextFromFile(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  
+  if (file.type === 'application/pdf') {
+    return extractTextFromPDF(buffer);
+  } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    return extractTextFromDOCX(buffer);
+  } else {
+    throw new Error('Unsupported file type. Please upload a PDF or DOCX file.');
+  }
 }

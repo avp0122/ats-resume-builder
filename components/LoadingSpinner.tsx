@@ -1,13 +1,11 @@
-/**
- * LoadingSpinner Component
- * 
- * Simple loading spinner for async operations
- */
 export default function LoadingSpinner() {
   return (
-    <div className="flex items-center justify-center py-8">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      <span className="ml-3 text-gray-600">Generating...</span>
+    <div className="flex items-center justify-center gap-3 py-10 text-white/70">
+      <span className="relative inline-flex h-5 w-5">
+        <span className="absolute inset-0 rounded-full border-2 border-fuchsia-400/30" />
+        <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-fuchsia-400 animate-spin" />
+      </span>
+      <span className="text-sm font-medium">Tailoring your resume…</span>
     </div>
   );
 }
