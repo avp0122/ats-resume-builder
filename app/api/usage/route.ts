@@ -18,6 +18,9 @@ export async function GET(_request: NextRequest) {
   let plan: 'free' | 'pro' = 'free';
   let count = 0;
   let proUntil: string | null = null;
+  // Caller (e.g. the support popup) uses this to prefill an email field
+  // when the visitor is signed in. Null for anonymous.
+  let email: string | null = null;
 
   if (isSupabaseConfigured()) {
     try {
@@ -27,6 +30,7 @@ export async function GET(_request: NextRequest) {
       } = await supabase.auth.getUser();
       if (user) {
         signedIn = true;
+        email = user.email ?? null;
         const { data: profile } = await supabase
           .from('profiles')
           .select('plan, pro_until, generations_count')
@@ -59,6 +63,7 @@ export async function GET(_request: NextRequest) {
 
   return NextResponse.json({
     signedIn,
+    email,
     plan,
     count,
     freeLimit,

@@ -28,7 +28,7 @@ interface Invoice {
   notes: string;
 }
 
-const CHAIN_OPTIONS: Chain[] = ['USDT_BEP20', 'USDT_ERC20'];
+const CHAIN_OPTIONS: Chain[] = ['USDT_TRC20', 'USDT_ERC20'];
 
 function CheckoutInner() {
   const router = useRouter();
@@ -36,10 +36,15 @@ function CheckoutInner() {
   const plan = search.get('plan') || 'pro';
   const initialPeriod = coerceBillingPeriod(search.get('period'));
   const [period, setPeriod] = useState<BillingPeriod>(initialPeriod);
-  const [chain, setChain] = useState<Chain>('USDT_BEP20');
+  const [chain, setChain] = useState<Chain>('USDT_TRC20');
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
+  // `loading` = no invoice yet, render the "Creating invoice…" skeleton.
+  // `refreshing` = we already have an invoice and are fetching new
+  //   numbers in the background; keep the existing card mounted and just
+  //   swap values on success. Subtle indicator only.
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [txHash, setTxHash] = useState('');
@@ -48,13 +53,24 @@ function CheckoutInner() {
   const [success, setSuccess] = useState(false);
   const [copied, setCopied] = useState<'address' | 'amount' | null>(null);
 
-  // Re-fetch the invoice whenever the user changes period or chain so the
-  // displayed price + receive address match the current selection.
+  // Re-fetch the invoice whenever the user changes period or chain. The
+  // card is intentionally NOT unmounted between fetches — that produced a
+  // jarring "Creating invoice…" flash every time the user toggled a
+  // radio button. Instead we keep the previous invoice rendered while
+  // the new one loads and swap the values atomically on success.
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    // hadInvoice captures whether we're doing an initial load (no card
+    // to keep visible) or a refresh (existing card stays). useState is
+    // async so reading `invoice` here works even during the React
+    // commit phase that runs this effect.
+    const hadInvoice = invoice !== null;
+    if (hadInvoice) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
-    setInvoice(null);
     (async () => {
       try {
         const res = await fetch('/api/checkout/crypto', {
@@ -77,12 +93,19 @@ function CheckoutInner() {
       } catch (e: any) {
         if (!cancelled) setError(e.message);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
+    // We intentionally exclude `invoice` from the dep list — including
+    // it would cause the effect to re-fire on every successful fetch
+    // (since setInvoice changes it), creating an infinite refresh loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan, period, chain, router]);
 
   const verify = async () => {
@@ -125,8 +148,8 @@ function CheckoutInner() {
           Pay with crypto
         </h1>
         <p className="mt-2 text-white/60 text-sm">
-          Pay with USDT — BEP-20 (Binance Smart Chain) or ERC-20 (Ethereum). Pro is
-          unlocked the moment we verify your transaction on-chain.
+          Pay with USDT — TRC-20 (Tron) or ERC-20 (Ethereum). Pro is unlocked the
+          moment we verify your transaction on-chain.
         </p>
       </header>
 
@@ -140,13 +163,15 @@ function CheckoutInner() {
             </>
           )}
 
-          {loading && <p className="mt-5 text-white/60 text-sm">Creating invoice…</p>}
+          {loading && !invoice && (
+            <p className="mt-5 text-white/60 text-sm">Creating invoice…</p>
+          )}
           {error && (
             <div className="mt-5 text-sm text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-lg p-4">
               {error}
               {error.toLowerCase().includes('not configured') && (
                 <p className="mt-2 text-xs text-rose-200/80">
-                  Set <code className="px-1 rounded bg-black/30">OWNER_USDT_BEP20_ADDRESS</code> and/or{' '}
+                  Set <code className="px-1 rounded bg-black/30">OWNER_USDT_TRC20_ADDRESS</code> and/or{' '}
                   <code className="px-1 rounded bg-black/30">OWNER_USDT_ERC20_ADDRESS</code> in{' '}
                   <code className="px-1 rounded bg-black/30">.env.local</code> to enable crypto payments.
                 </p>
@@ -169,7 +194,20 @@ function CheckoutInner() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs uppercase tracking-widest text-white/40">Order</div>
+                  <div className="text-xs uppercase tracking-widest text-white/40 inline-flex items-center gap-1.5 justify-end">
+                    Order
+                    {refreshing && (
+                      <svg
+                        className="animate-spin h-3 w-3 text-white/50"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-label="Updating amount"
+                      >
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.3" strokeWidth="4" />
+                        <path d="M22 12a10 10 0 01-10 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+                      </svg>
+                    )}
+                  </div>
                   <div className="text-lg font-mono text-amber-300">{invoice.orderCode}</div>
                 </div>
               </div>
@@ -206,13 +244,25 @@ function CheckoutInner() {
                 <input
                   value={txHash}
                   onChange={(e) => setTxHash(e.target.value.trim())}
-                  placeholder="0x… 66 characters total"
+                  placeholder={
+                    chain === 'USDT_TRC20' ? '64 hex characters' : '0x… 66 characters total'
+                  }
                   className="w-full px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:border-fuchsia-400 focus:ring-2 focus:ring-fuchsia-400/30 outline-none transition font-mono text-sm"
                 />
                 <p className="mt-1 text-xs text-white/40">
-                  EVM tx hashes start with <code>0x</code> followed by 64 hex characters.
-                  Find yours in your wallet&apos;s transaction details, on{' '}
-                  {chain === 'USDT_BEP20' ? 'bscscan.com' : 'etherscan.io'}.
+                  {chain === 'USDT_TRC20' ? (
+                    <>
+                      TRC-20 tx hashes are 64 hex characters with no <code>0x</code> prefix.
+                      Find yours in your wallet&apos;s transaction details or on{' '}
+                      tronscan.org.
+                    </>
+                  ) : (
+                    <>
+                      ERC-20 tx hashes start with <code>0x</code> followed by 64 hex
+                      characters. Find yours in your wallet&apos;s transaction details or on{' '}
+                      etherscan.io.
+                    </>
+                  )}
                 </p>
                 {verifyError && (
                   <div className="mt-2 text-sm text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-lg p-3">
@@ -221,7 +271,12 @@ function CheckoutInner() {
                 )}
                 <button
                   onClick={verify}
-                  disabled={verifying || !/^(0x)?[0-9a-fA-F]{64}$/.test(txHash)}
+                  disabled={
+                    verifying ||
+                    (chain === 'USDT_TRC20'
+                      ? !/^[0-9a-fA-F]{64}$/.test(txHash)
+                      : !/^(0x)?[0-9a-fA-F]{64}$/.test(txHash))
+                  }
                   className="mt-3 w-full py-2.5 rounded-lg bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-fuchsia-500/30"
                 >
                   {verifying ? 'Verifying…' : 'Verify payment'}
@@ -230,7 +285,7 @@ function CheckoutInner() {
 
               <p className="text-xs text-white/40 text-center">
                 Verification typically takes a few seconds after on-chain confirmation
-                ({chain === 'USDT_BEP20' ? '~10s on BSC' : '~3 min on Ethereum'}).
+                ({chain === 'USDT_TRC20' ? '~1 min on Tron' : '~3 min on Ethereum'}).
               </p>
             </div>
           )}
@@ -329,7 +384,7 @@ function ChainPicker({
             >
               <div className="text-sm font-semibold text-white">{CHAIN_LABEL[c]}</div>
               <div className="mt-0.5 text-[11px] text-white/50">
-                {c === 'USDT_BEP20' ? 'Low fees · ~10s confirms' : 'Universal · ~3 min confirms'}
+                {c === 'USDT_TRC20' ? 'Low fees · ~1 min confirms' : 'Universal · ~3 min confirms'}
               </div>
             </button>
           );

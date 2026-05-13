@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-import { getOwnerAddress, verifyUsdtTransfer } from '@/lib/crypto';
+import {
+  getOwnerAddress,
+  verifyUsdtTransfer,
+  isValidTxHashForChain,
+  normalizeTxHash,
+} from '@/lib/crypto';
 import {
   coerceBillingPeriod,
   coerceChain,
@@ -11,10 +16,6 @@ import {
   type BillingPeriod,
   type Chain,
 } from '@/lib/pricing';
-
-// EVM transaction hashes are 0x-prefixed 64 hex chars; accept the raw
-// 64-hex form too (the checkout page strips/preserves `0x`).
-const TX_HASH_RE = /^(0x)?[0-9a-fA-F]{64}$/;
 
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured()) {
@@ -33,13 +34,6 @@ export async function POST(request: NextRequest) {
     period?: BillingPeriod;
     chain?: Chain;
   };
-  if (!body.txHash || !TX_HASH_RE.test(body.txHash)) {
-    return NextResponse.json({ error: 'Invalid transaction hash.' }, { status: 400 });
-  }
-  // Normalize to the 0x-prefixed lowercase form so the unique key in
-  // `payments.tx_hash` always sees the same value regardless of which
-  // explorer the user pasted from.
-  const txHash = (body.txHash.startsWith('0x') ? body.txHash : `0x${body.txHash}`).toLowerCase();
   if (!body.plan || body.plan === 'free') {
     return NextResponse.json({ error: 'Invalid plan.' }, { status: 400 });
   }
@@ -49,6 +43,21 @@ export async function POST(request: NextRequest) {
   const period = coerceBillingPeriod(body.period);
   const chain = coerceChain(body.chain);
   const tier = getProTier(period);
+  // Hash format differs by chain — Tron accepts only bare hex, EVM
+  // accepts both bare and 0x-prefixed. Validate per-chain so we don't
+  // hand a malformed value to the explorer API.
+  if (!body.txHash || !isValidTxHashForChain(chain, body.txHash)) {
+    const example =
+      chain === 'USDT_TRC20' ? '64 hex characters (no 0x prefix)' : '0x… 66 characters total';
+    return NextResponse.json(
+      { error: `Invalid transaction hash. Expected ${example}.` },
+      { status: 400 }
+    );
+  }
+  // Canonical form used everywhere downstream: lowercase, with the
+  // chain's expected prefix. Keeps the unique key in payments.tx_hash
+  // stable across explorer copy-paste flavours.
+  const txHash = normalizeTxHash(chain, body.txHash);
 
   // Idempotency: reject if hash already credited.
   const admin = createSupabaseAdminClient();

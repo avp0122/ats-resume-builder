@@ -123,7 +123,7 @@ export const PLANS: Plan[] = [
       'Unlimited downloads',
       'Detailed keyword breakdown',
       'Priority AI throughput',
-      'Pay with USDT (BEP-20 or ERC-20)',
+      'Pay with USDT (TRC-20 or ERC-20)',
     ],
     cta: 'Upgrade with crypto',
     accent: 'fuchsia',
@@ -137,18 +137,20 @@ export function getPlan(id: PlanId): Plan {
   return plan;
 }
 
-// Two USDT receive chains: BEP-20 (BSC) and ERC-20 (Ethereum mainnet).
-export const SUPPORTED_CHAINS = ['USDT_BEP20', 'USDT_ERC20'] as const;
+// Two USDT receive chains: TRC-20 (Tron) and ERC-20 (Ethereum mainnet).
+export const SUPPORTED_CHAINS = ['USDT_TRC20', 'USDT_ERC20'] as const;
 export type Chain = (typeof SUPPORTED_CHAINS)[number];
 
 export const CHAIN_LABEL: Record<Chain, string> = {
-  USDT_BEP20: 'USDT (BEP-20 / BSC)',
+  USDT_TRC20: 'USDT (TRC-20 / Tron)',
   USDT_ERC20: 'USDT (ERC-20 / Ethereum)',
 };
 
-export const DEFAULT_CHAIN: Chain = 'USDT_BEP20';
+// Tron first by default: lower fees, faster finality, the most common
+// USDT chain among the audience for a $4.99 product.
+export const DEFAULT_CHAIN: Chain = 'USDT_TRC20';
 
 export function coerceChain(value: unknown): Chain {
-  if (value === 'USDT_BEP20' || value === 'USDT_ERC20') return value;
+  if (value === 'USDT_TRC20' || value === 'USDT_ERC20') return value;
   return DEFAULT_CHAIN;
 }
