@@ -73,12 +73,28 @@ export default function RouteProgress() {
   function complete() {
     if (tickRef.current) clearInterval(tickRef.current);
     tickRef.current = null;
-    setProgress(100);
+    // Push to 100% on the next animation frame. Using rAF (instead of
+    // setting state synchronously) ensures the browser paints at least
+    // once at the pre-completion value before transitioning to 100% —
+    // without this, fast navigations can collapse the start and end
+    // styles into one paint and the width transition never plays.
+    requestAnimationFrame(() => setProgress(100));
     if (hideRef.current) clearTimeout(hideRef.current);
+    // Two-stage hide so the bar is visibly full before it fades:
+    //   t=0          progress → 100% (180ms width transition)
+    //   t=~180-380   bar sits at 100% (user perceives "finished")
+    //   t=380        opacity fades over 200ms
+    //   t=580        snap progress back to 0 for the next run
+    //
+    // Pre-fix the bar fell off-screen with only ~70ms at 100%, which
+    // most users perceived as "stuck at 80%". Holding ~200ms past the
+    // width transition makes the completion clearly visible.
     hideRef.current = setTimeout(() => {
       setVisible(false);
-      setProgress(0);
-    }, 250);
+      // Defer the progress reset until the opacity fade finishes so the
+      // bar doesn't visibly snap from 100 → 0 mid-fade.
+      hideRef.current = setTimeout(() => setProgress(0), 220);
+    }, 380);
   }
 
   return (

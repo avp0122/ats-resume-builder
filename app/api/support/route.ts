@@ -94,6 +94,17 @@ export async function POST(request: NextRequest) {
     // Continue as anonymous.
   }
 
+  // Email is required for anonymous senders — without one we have no way
+  // to reply. Signed-in users supply theirs implicitly via auth so the
+  // form doesn't even render the field for them.
+  const resolvedEmail = userEmail || providedEmail || null;
+  if (!resolvedEmail) {
+    return NextResponse.json(
+      { error: 'Email is required so we can reply.' },
+      { status: 400 }
+    );
+  }
+
   // Insert via the admin client so we don't need a permissive RLS policy
   // that would let anyone INSERT with an arbitrary user_id.
   const admin = createSupabaseAdminClient();
@@ -101,7 +112,7 @@ export async function POST(request: NextRequest) {
     .from('support_tickets')
     .insert({
       user_id: userId,
-      email: userEmail || providedEmail || null,
+      email: resolvedEmail,
       phone: providedPhone || null,
       subject,
       message,

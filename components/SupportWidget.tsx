@@ -113,11 +113,17 @@ function SupportPopup({
     subjectRef.current?.focus();
   }, []);
 
+  // Email is required for anonymous users (we have no other way to reach
+  // them). Signed-in users have their auth email on the server, so the
+  // input is hidden in that case and this check trivially passes.
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const emailOk = !!session.signedInEmail || EMAIL_RE.test(email.trim());
   const canSubmit =
     subject.trim().length >= MIN_SUBJECT &&
     subject.trim().length <= MAX_SUBJECT &&
     message.trim().length >= MIN_MESSAGE &&
     message.trim().length <= MAX_MESSAGE &&
+    emailOk &&
     !submitting;
 
   const submit = async (e: FormEvent) => {
@@ -228,7 +234,8 @@ function SupportPopup({
                   value={email}
                   onChange={setEmail}
                   type="email"
-                  placeholder="you@example.com (optional)"
+                  placeholder="you@example.com"
+                  required
                 />
               )}
               <Field

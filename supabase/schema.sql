@@ -6,15 +6,26 @@ create extension if not exists "pgcrypto";
 -- specific uploaded resume (name, phone, location, social links, etc.)
 -- lives on public.resume_uploads — there can be many uploads per user,
 -- each with their own contact block. See migration 008 for the history.
+--
+-- Signup-time client metadata (email, OS, browser + version, geo-IP
+-- country/city, IP) is captured here too — see migration 010.
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   plan text not null default 'free' check (plan in ('free', 'pro')),
   pro_until timestamptz,
   generations_count int not null default 0,
+  email text,
+  signup_os text,
+  signup_browser text,
+  signup_browser_version text,
+  signup_country text,
+  signup_city text,
+  signup_ip text,
   created_at timestamptz not null default now()
 );
 
 create index if not exists profiles_pro_until_idx on public.profiles (pro_until);
+create index if not exists profiles_email_idx on public.profiles (lower(email));
 
 create table if not exists public.resume_uploads (
   id uuid primary key default gen_random_uuid(),
@@ -77,14 +88,19 @@ drop policy if exists "insert own uploads" on public.resume_uploads;
 create policy "insert own uploads" on public.resume_uploads
   for insert with check (auth.uid() = user_id);
 
--- Auto-create profile on signup.
+-- Auto-create profile on signup. Email is copied from auth.users in the
+-- same transaction; the rest of the signup-time client metadata
+-- (OS/browser/location) is filled in by the /api/auth/signup route once
+-- it sees the request headers.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer set search_path = public
 as $$
 begin
-  insert into public.profiles (id) values (new.id);
+  insert into public.profiles (id, email)
+  values (new.id, new.email)
+  on conflict (id) do update set email = excluded.email;
   return new;
 end;
 $$;
