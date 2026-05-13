@@ -2,23 +2,18 @@
 
 create extension if not exists "pgcrypto";
 
+-- profiles holds USER-level state only. Anything that describes a
+-- specific uploaded resume (name, phone, location, social links, etc.)
+-- lives on public.resume_uploads — there can be many uploads per user,
+-- each with their own contact block. See migration 008 for the history.
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   plan text not null default 'free' check (plan in ('free', 'pro')),
   pro_until timestamptz,
   generations_count int not null default 0,
-  full_name text,
-  contact_email text,
-  phone text,
-  location text,
-  date_of_birth date,
-  social_links jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 
--- For existing installs, see supabase/migrations/002_personal_info.sql and
--- supabase/migrations/003_monthly_pro_subscription.sql.
-create index if not exists profiles_full_name_idx on public.profiles (lower(full_name));
 create index if not exists profiles_pro_until_idx on public.profiles (pro_until);
 
 create table if not exists public.resume_uploads (

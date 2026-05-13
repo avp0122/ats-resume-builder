@@ -3,14 +3,16 @@ import type { Chain } from './pricing';
 /**
  * Owner-side payment receiving addresses. Set in env. Never store private keys here.
  *
- * BEP-20 (BSC) is the active receive chain. The previous TRC-20 (Tron)
- * support has been removed because the project switched payment rails —
- * keeping both would mean maintaining two verifiers for no benefit.
+ * Two USDT receive chains are supported:
+ *   - BEP-20 on Binance Smart Chain (low fees)
+ *   - ERC-20 on Ethereum mainnet (higher fees but the most universal)
  */
 export function getOwnerAddress(chain: Chain): string | null {
   switch (chain) {
     case 'USDT_BEP20':
       return process.env.OWNER_USDT_BEP20_ADDRESS || null;
+    case 'USDT_ERC20':
+      return process.env.OWNER_USDT_ERC20_ADDRESS || null;
     default:
       return null;
   }
@@ -25,25 +27,55 @@ export interface TxVerificationResult {
   confirmations?: number;
 }
 
-// Binance-Smart-Chain mainnet USDT (BEP-20). Verified on BscScan.
-// https://bscscan.com/address/0x55d398326f99059ff775485246999027b3197955
-const USDT_BEP20_CONTRACT = '0x55d398326f99059ff775485246999027b3197955';
-const USDT_BEP20_DECIMALS = 18; // BSC USDT uses 18 decimals (not 6 like Tron/ETH)
-const MIN_CONFIRMATIONS = 3; // ~9s of finality on BSC
-
-// Etherscan's unified V2 API. BscScan was folded into it: BSC queries now
-// go to the same host with `chainid=56`. A single Etherscan API key covers
-// every chain Etherscan supports, so BSCSCAN_API_KEY (which is an
-// Etherscan-issued key now) and ETHERSCAN_API_KEY are interchangeable —
-// we accept both env names for migration friendliness.
+// ─── Etherscan V2 API ──────────────────────────────────────────────────
+// One host, one key, many chains. BSC = chainid 56, Ethereum = chainid 1.
+// Either BSCSCAN_API_KEY, ETHSCAN_API_KEY, or ETHERSCAN_API_KEY satisfies
+// it — the user set ETHSCAN_API_KEY when wiring up ERC-20, so we accept
+// that variant explicitly.
 const ETHERSCAN_V2_API = 'https://api.etherscan.io/v2/api';
-const BSC_CHAIN_ID = '56';
 
 function getEtherscanApiKey(): string {
-  return process.env.BSCSCAN_API_KEY || process.env.ETHERSCAN_API_KEY || '';
+  return (
+    process.env.BSCSCAN_API_KEY ||
+    process.env.ETHSCAN_API_KEY ||
+    process.env.ETHERSCAN_API_KEY ||
+    ''
+  );
 }
 
-interface BscReceipt {
+// ─── Per-chain USDT contract config ────────────────────────────────────
+// USDT on BSC has 18 decimals (unlike ETH USDT's 6) — these are real
+// on-chain quirks, not our convention.
+interface ChainConfig {
+  chainId: string;
+  contract: string;
+  decimals: number;
+  /** Block-finality target. Higher for ETH (slower blocks). */
+  minConfirmations: number;
+  /** Human label used inside error messages. */
+  label: string;
+}
+
+const CHAIN_CONFIG: Record<Chain, ChainConfig> = {
+  USDT_BEP20: {
+    chainId: '56',
+    // https://bscscan.com/address/0x55d398326f99059ff775485246999027b3197955
+    contract: '0x55d398326f99059ff775485246999027b3197955',
+    decimals: 18,
+    minConfirmations: 3, // ~9s of BSC finality
+    label: 'BEP-20',
+  },
+  USDT_ERC20: {
+    chainId: '1',
+    // https://etherscan.io/address/0xdac17f958d2ee523a2206206994597c13d831ec7
+    contract: '0xdac17f958d2ee523a2206206994597c13d831ec7',
+    decimals: 6,
+    minConfirmations: 12, // ~3min of ETH finality; matches CEX practice
+    label: 'ERC-20',
+  },
+};
+
+interface EvmReceipt {
   status: string;
   blockNumber: string;
   logs: Array<{
@@ -53,34 +85,32 @@ interface BscReceipt {
   }>;
 }
 
-interface BscTx {
-  blockNumber: string;
-  from: string;
-  to: string;
-  input: string;
-  hash: string;
-}
+// ERC-20 Transfer event topic0 = keccak256("Transfer(address,address,uint256)")
+const TRANSFER_TOPIC =
+  '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
 /**
- * Verify a USDT (BEP-20) transfer using the Etherscan V2 API.
+ * Chain-dispatching verifier. Pulls the receipt from Etherscan V2 on the
+ * correct chain, locates the USDT Transfer log, and validates recipient
+ * + amount + confirmations.
  *
- * Etherscan rolled BscScan into a single multichain API in 2024: BSC is
- * just chain 56 on the V2 host. The free tier without a key is severely
- * rate-limited (~1 req / 5s) — production should set BSCSCAN_API_KEY (or
- * ETHERSCAN_API_KEY, which is the same key under the unified Etherscan
- * account).
+ * The flow is identical for both chains because Etherscan V2 unified the
+ * BSC and Ethereum REST surfaces — only the chain id, contract address,
+ * and decimals differ.
  */
-export async function verifyUsdtBep20(
+export async function verifyUsdtTransfer(
+  chain: Chain,
   txHash: string,
   expectedTo: string,
   expectedAmountUSD: number
 ): Promise<TxVerificationResult> {
+  const cfg = CHAIN_CONFIG[chain];
+  if (!cfg) return { ok: false, reason: `Unsupported chain: ${chain}` };
   const apiKey = getEtherscanApiKey();
   const qs = (params: Record<string, string>) =>
-    new URLSearchParams({ chainid: BSC_CHAIN_ID, ...params, apikey: apiKey }).toString();
+    new URLSearchParams({ chainid: cfg.chainId, ...params, apikey: apiKey }).toString();
 
-  // 1. Pull the transaction receipt — gives us status + logs (the ERC-20
-  //    Transfer event sits in there as topic0 = keccak256("Transfer(...)")).
+  // 1. Fetch the transaction receipt (status + logs).
   const receiptRes = await fetch(
     `${ETHERSCAN_V2_API}?${qs({
       module: 'proxy',
@@ -90,38 +120,42 @@ export async function verifyUsdtBep20(
   );
   if (!receiptRes.ok) return { ok: false, reason: 'Etherscan V2 request failed' };
   const receiptJson: {
-    result?: BscReceipt | null;
+    result?: EvmReceipt | string | null;
     error?: { message?: string };
     message?: string;
   } = await receiptRes.json();
   // The V2 API returns rate-limit / auth errors as `{status: "0", message,
-  // result: "..."}` — catch those before we try to read logs off `result`.
-  if (receiptJson.message && /rate limit|invalid api key/i.test(receiptJson.message)) {
+  // result: "<text>"}` — catch those before we try to read logs off a
+  // string.
+  if (
+    receiptJson.message &&
+    /rate limit|invalid api key|notok/i.test(receiptJson.message) &&
+    typeof receiptJson.result === 'string'
+  ) {
     return { ok: false, reason: `Etherscan V2: ${receiptJson.message}` };
   }
-  const receipt = receiptJson.result && typeof receiptJson.result === 'object'
-    ? (receiptJson.result as BscReceipt)
-    : null;
+  const receipt =
+    receiptJson.result && typeof receiptJson.result === 'object'
+      ? (receiptJson.result as EvmReceipt)
+      : null;
   if (!receipt) return { ok: false, reason: 'Transaction not found' };
   if (!receipt.status || parseInt(receipt.status, 16) !== 1) {
     return { ok: false, reason: 'Transaction reverted on-chain' };
   }
 
-  // Find the USDT Transfer log emitted by the BEP-20 contract. The Transfer
-  // event topic0 is keccak256("Transfer(address,address,uint256)").
-  const TRANSFER_TOPIC =
-    '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+  // 2. Find the USDT Transfer log on the right contract.
   const transferLog = (receipt.logs || []).find(
     (l) =>
       l.address &&
-      l.address.toLowerCase() === USDT_BEP20_CONTRACT.toLowerCase() &&
+      l.address.toLowerCase() === cfg.contract.toLowerCase() &&
       l.topics &&
       l.topics[0]?.toLowerCase() === TRANSFER_TOPIC
   );
-  if (!transferLog) return { ok: false, reason: 'No USDT BEP-20 transfer in this tx' };
+  if (!transferLog) {
+    return { ok: false, reason: `No USDT ${cfg.label} transfer in this tx` };
+  }
 
-  // topics[1] = from (32-byte padded), topics[2] = to (32-byte padded),
-  // data = uint256 amount (hex).
+  // topics[1] = from (32-byte padded), topics[2] = to, data = uint256 amount.
   const fromTopic = transferLog.topics[1];
   const toTopic = transferLog.topics[2];
   const amountHex = transferLog.data;
@@ -131,9 +165,7 @@ export async function verifyUsdtBep20(
   const toAddr = '0x' + toTopic.slice(-40);
   const fromAddr = '0x' + fromTopic.slice(-40);
   const amountRaw = BigInt(amountHex);
-  // 18 decimals, but USDT is a USD-pegged stable so divide by 1e18 for the
-  // human-readable USDT figure.
-  const amount = Number(amountRaw) / 10 ** USDT_BEP20_DECIMALS;
+  const amount = Number(amountRaw) / 10 ** cfg.decimals;
 
   if (toAddr.toLowerCase() !== expectedTo.toLowerCase()) {
     return {
@@ -143,7 +175,7 @@ export async function verifyUsdtBep20(
       amount,
     };
   }
-  // Allow a tiny 0.01 USDT undershoot for floating rounding; otherwise the
+  // Allow 0.01 USDT undershoot for floating rounding; otherwise the
   // payer must have sent at least the expected amount.
   if (amount + 0.01 < expectedAmountUSD) {
     return {
@@ -155,14 +187,14 @@ export async function verifyUsdtBep20(
     };
   }
 
-  const nowBlock = await getBscLatestBlock();
+  const nowBlock = await getLatestBlock(cfg);
   const txBlock = parseInt(receipt.blockNumber, 16);
   const confirmations =
     nowBlock !== null && !Number.isNaN(txBlock) ? Math.max(0, nowBlock - txBlock) : 0;
-  if (confirmations < MIN_CONFIRMATIONS) {
+  if (confirmations < cfg.minConfirmations) {
     return {
       ok: false,
-      reason: `Awaiting confirmations (${confirmations}/${MIN_CONFIRMATIONS})`,
+      reason: `Awaiting confirmations (${confirmations}/${cfg.minConfirmations})`,
       confirmations,
       amount,
       to: toAddr,
@@ -173,12 +205,12 @@ export async function verifyUsdtBep20(
   return { ok: true, amount, to: toAddr, from: fromAddr, confirmations };
 }
 
-async function getBscLatestBlock(): Promise<number | null> {
+async function getLatestBlock(cfg: ChainConfig): Promise<number | null> {
   const apiKey = getEtherscanApiKey();
   try {
     const res = await fetch(
       `${ETHERSCAN_V2_API}?${new URLSearchParams({
-        chainid: BSC_CHAIN_ID,
+        chainid: cfg.chainId,
         module: 'proxy',
         action: 'eth_blockNumber',
         apikey: apiKey,
@@ -193,9 +225,25 @@ async function getBscLatestBlock(): Promise<number | null> {
 }
 
 /**
- * Address validity check for a BEP-20 (EVM) address. Used by the checkout
- * route so we fail with a clear message if OWNER_USDT_BEP20_ADDRESS is
- * malformed (a common config slip when copying from a wallet).
+ * Backwards-compat alias for the legacy single-chain caller. Some routes
+ * may still import the BEP-20-named function; route them through the
+ * unified verifier.
+ *
+ * @deprecated Use verifyUsdtTransfer('USDT_BEP20', ...) instead.
+ */
+export function verifyUsdtBep20(
+  txHash: string,
+  expectedTo: string,
+  expectedAmountUSD: number
+): Promise<TxVerificationResult> {
+  return verifyUsdtTransfer('USDT_BEP20', txHash, expectedTo, expectedAmountUSD);
+}
+
+/**
+ * Address validity check for an EVM (BEP-20 / ERC-20) address. Used by
+ * the checkout route so we fail with a clear message if the configured
+ * owner address is malformed (a common config slip when copying from a
+ * wallet).
  */
 export function isValidEvmAddress(addr: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(addr);

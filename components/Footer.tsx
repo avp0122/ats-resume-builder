@@ -36,11 +36,6 @@ export default function Footer() {
                   Account
                 </Link>
               </li>
-              <li>
-                <Link href="/support" className="text-white/70 hover:text-white transition">
-                  Support
-                </Link>
-              </li>
             </ul>
           </div>
 

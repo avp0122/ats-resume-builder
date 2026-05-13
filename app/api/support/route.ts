@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: { subject?: string; message?: string; email?: string };
+  let body: { subject?: string; message?: string; email?: string; phone?: string };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
   const subject = (body.subject || '').trim();
   const message = (body.message || '').trim();
   const providedEmail = (body.email || '').trim();
+  const providedPhone = (body.phone || '').trim();
 
   if (subject.length < 3 || subject.length > 200) {
     return NextResponse.json(
@@ -59,6 +60,13 @@ export async function POST(request: NextRequest) {
   }
   if (providedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(providedEmail)) {
     return NextResponse.json({ error: 'Email looks invalid.' }, { status: 400 });
+  }
+  // Phone is optional; if given, accept anything 7–25 chars of digits,
+  // spaces, dashes, parens, and a single optional leading +. Keep this
+  // forgiving — international formats vary wildly and a strict regex just
+  // annoys legitimate users.
+  if (providedPhone && !/^\+?[\d\s().-]{7,25}$/.test(providedPhone)) {
+    return NextResponse.json({ error: 'Phone number looks invalid.' }, { status: 400 });
   }
 
   const ip = clientIp(request);
@@ -94,6 +102,7 @@ export async function POST(request: NextRequest) {
     .insert({
       user_id: userId,
       email: userEmail || providedEmail || null,
+      phone: providedPhone || null,
       subject,
       message,
       client_ip: ip,
