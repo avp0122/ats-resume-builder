@@ -39,10 +39,10 @@ export default function RouteProgress() {
     // the bar starts in the same frame as the action.
     const onProgrammatic = () => start();
     document.addEventListener('click', onClick);
-    window.addEventListener('kresume:nav-start', onProgrammatic);
+    window.addEventListener('kairesume:nav-start', onProgrammatic);
     return () => {
       document.removeEventListener('click', onClick);
-      window.removeEventListener('kresume:nav-start', onProgrammatic);
+      window.removeEventListener('kairesume:nav-start', onProgrammatic);
     };
   }, []);
 

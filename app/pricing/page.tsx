@@ -3,7 +3,7 @@ import { PLANS } from '@/lib/pricing';
 import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { effectivePlan, type EffectivePlan } from '@/lib/plan';
 
-export const metadata = { title: 'Pricing — kresume' };
+export const metadata = { title: 'Pricing — kairesume' };
 
 export default async function PricingPage() {
   // Detect viewer status so each card can show the right CTA.

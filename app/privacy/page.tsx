@@ -1,4 +1,4 @@
-export const metadata = { title: 'Privacy Policy — kresume' };
+export const metadata = { title: 'Privacy Policy — kairesume' };
 
 export default function PrivacyPage() {
   return (
@@ -26,7 +26,7 @@ export default function PrivacyPage() {
         <Section title="2. What we don't collect">
           <p>
             We do not sell or rent your data. We do not run analytics scripts that fingerprint you. We do not store
-            your payment credentials — crypto payments go directly to our wallet on the Tron network.
+            your payment credentials — crypto payments go directly to our wallet on Binance Smart Chain (BEP-20).
           </p>
         </Section>
 
@@ -40,7 +40,7 @@ export default function PrivacyPage() {
         <Section title="4. Third parties">
           <p>
             We use Groq (LLM provider) to generate content, Supabase to host the database and authentication, and
-            TronGrid to verify cryptocurrency transactions. These providers have their own privacy policies.
+            BscScan to verify cryptocurrency transactions on Binance Smart Chain. These providers have their own privacy policies.
           </p>
         </Section>
 

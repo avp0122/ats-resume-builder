@@ -45,7 +45,7 @@ export const PLANS: Plan[] = [
       'Unlimited downloads',
       'Detailed keyword breakdown',
       'Priority AI throughput',
-      'Pay monthly with USDT (TRC-20)',
+      'Pay monthly with USDT (BEP-20 / BSC)',
     ],
     cta: 'Upgrade with crypto',
     accent: 'fuchsia',
@@ -59,9 +59,9 @@ export function getPlan(id: PlanId): Plan {
   return plan;
 }
 
-export const SUPPORTED_CHAINS = ['USDT_TRC20'] as const;
+export const SUPPORTED_CHAINS = ['USDT_BEP20'] as const;
 export type Chain = (typeof SUPPORTED_CHAINS)[number];
 
 export const CHAIN_LABEL: Record<Chain, string> = {
-  USDT_TRC20: 'USDT (TRC-20 / Tron)',
+  USDT_BEP20: 'USDT (BEP-20 / BSC)',
 };

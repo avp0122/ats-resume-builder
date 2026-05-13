@@ -59,7 +59,7 @@ export default function Navbar() {
           <span className="h-8 w-8 rounded-lg bg-gradient-to-br from-fuchsia-500 via-indigo-500 to-sky-400 grid place-items-center font-bold text-white shadow-lg shadow-fuchsia-500/30 group-hover:shadow-fuchsia-500/50 transition">
             K
           </span>
-          <span className="text-white font-bold tracking-tight text-lg">kresume</span>
+          <span className="text-white font-bold tracking-tight text-lg">kairesume</span>
         </Link>
         <div className="flex items-center gap-1 sm:gap-3 text-sm">
           <Link

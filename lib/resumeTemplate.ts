@@ -29,7 +29,7 @@ export function renderResumeDocument(
   const padding = isPdf ? PDF_PADDING : PREVIEW_PADDING;
 
   return `
-<div class="kresume-doc" style="
+<div class="kairesume-doc" style="
   ${widthStyle}
   margin:0 auto;
   padding:${padding};
@@ -71,7 +71,7 @@ export function renderCoverLetterDocument(
   const signerName = (personalInfo.fullName || '').trim();
 
   return `
-<div class="kresume-doc" style="
+<div class="kairesume-doc" style="
   ${widthStyle}
   margin:0 auto;
   padding:${padding};

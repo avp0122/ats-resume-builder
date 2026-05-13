@@ -98,7 +98,7 @@ function CheckoutInner() {
           Pay with crypto
         </h1>
         <p className="mt-2 text-white/60 text-sm">
-          One-time payment in USDT (TRC-20). Pro is unlocked the moment we verify your transaction on-chain.
+          One-time payment in USDT (BEP-20 / Binance Smart Chain). Pro is unlocked the moment we verify your transaction on-chain.
         </p>
       </header>
 
@@ -111,7 +111,7 @@ function CheckoutInner() {
               {error}
               {error.toLowerCase().includes('not configured') && (
                 <p className="mt-2 text-xs text-rose-200/80">
-                  Set <code className="px-1 rounded bg-black/30">OWNER_USDT_TRC20_ADDRESS</code> in <code className="px-1 rounded bg-black/30">.env.local</code> to enable crypto payments.
+                  Set <code className="px-1 rounded bg-black/30">OWNER_USDT_BEP20_ADDRESS</code> in <code className="px-1 rounded bg-black/30">.env.local</code> to enable crypto payments.
                 </p>
               )}
             </div>
@@ -158,12 +158,12 @@ function CheckoutInner() {
                 </label>
                 <input
                   value={txHash}
-                  onChange={(e) => setTxHash(e.target.value.replace(/^0x/i, '').trim())}
-                  placeholder="64 hex characters (e.g. a1b2c3…)"
+                  onChange={(e) => setTxHash(e.target.value.trim())}
+                  placeholder="0x… 66 characters total"
                   className="w-full px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:border-fuchsia-400 focus:ring-2 focus:ring-fuchsia-400/30 outline-none transition font-mono text-sm"
                 />
                 <p className="mt-1 text-xs text-white/40">
-                  TRC-20 hashes are 64 hex characters with no <code>0x</code> prefix. You can find it in your wallet&apos;s transaction details or on tronscan.org.
+                  BEP-20 hashes start with <code>0x</code> followed by 64 hex characters. You can find yours in your wallet&apos;s transaction details or on bscscan.com.
                 </p>
                 {verifyError && (
                   <div className="mt-2 text-sm text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-lg p-3">
@@ -172,7 +172,7 @@ function CheckoutInner() {
                 )}
                 <button
                   onClick={verify}
-                  disabled={verifying || txHash.length < 60}
+                  disabled={verifying || !/^(0x)?[0-9a-fA-F]{64}$/.test(txHash)}
                   className="mt-3 w-full py-2.5 rounded-lg bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-fuchsia-500/30"
                 >
                   {verifying ? 'Verifying…' : 'Verify payment'}

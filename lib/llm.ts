@@ -288,13 +288,22 @@ export async function generateATSContent(
   const MIN_OUTPUT = 2500; // Below this we cannot reliably fit a resume + cover letter.
   const MAX_OUTPUT = 5500; // Headroom we believe is enough for full output.
   const inputTokens = estimateTokens(prompt);
+  const jdTokens = estimateTokens(jd);
+  const resumeTokens = estimateTokens(resume);
+  const maxInputTokens = TPM_BUDGET - SAFETY_MARGIN - MIN_OUTPUT;
   const maxTokens = Math.max(
     MIN_OUTPUT,
     Math.min(MAX_OUTPUT, TPM_BUDGET - SAFETY_MARGIN - inputTokens)
   );
   if (TPM_BUDGET - SAFETY_MARGIN - inputTokens < MIN_OUTPUT) {
+    // Show the user exactly WHERE the budget went — so they can decide
+    // whether to trim the JD, the resume, or both.
+    const overBy = inputTokens - maxInputTokens;
     throw new Error(
-      `Resume + job description are too large for the free-tier rate limit (estimated ${inputTokens} input tokens; max ~${TPM_BUDGET - SAFETY_MARGIN - MIN_OUTPUT} allowed). Trim the resume or job description and try again.`
+      `Inputs too large for the free-tier rate limit. ` +
+        `Job description ≈ ${jdTokens} tokens, resume ≈ ${resumeTokens} tokens ` +
+        `(combined prompt ≈ ${inputTokens} tokens, max ≈ ${maxInputTokens}). ` +
+        `Trim about ${overBy} tokens (~${Math.ceil(overBy * 0.75)} words) from the longer one and retry.`
     );
   }
   console.log(

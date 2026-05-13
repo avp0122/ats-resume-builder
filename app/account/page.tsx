@@ -5,7 +5,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { effectivePlan } from '@/lib/plan';
 import { SIGNED_IN_FREE_GENERATIONS } from '@/lib/pricing';
 
-export const metadata = { title: 'Account — kresume' };
+export const metadata = { title: 'Account — kairesume' };
 
 export default async function AccountPage() {
   if (!isSupabaseConfigured()) {
@@ -48,7 +48,15 @@ export default async function AccountPage() {
   }
 
   const plan = effectivePlan(profile);
-  const generationsCount = profile?.generations_count ?? 0;
+  const rawGenerationsCount = profile?.generations_count ?? 0;
+  // For free users the count is conceptually capped at the limit. Pre-fix
+  // rows in the DB may have over-counted (5, 6, 7…); clamp for display so
+  // the user sees "3 / 3" instead of "6 / 3" and the remaining quota math
+  // doesn't go negative.
+  const generationsCount =
+    plan === 'free'
+      ? Math.min(rawGenerationsCount, SIGNED_IN_FREE_GENERATIONS)
+      : rawGenerationsCount;
   const remainingFree = Math.max(0, SIGNED_IN_FREE_GENERATIONS - generationsCount);
 
   return (
