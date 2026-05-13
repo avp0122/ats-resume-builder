@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-import { getOwnerAddress, verifyUsdtTrc20 } from '@/lib/crypto';
+import { getOwnerAddress, verifyUsdtBep20 } from '@/lib/crypto';
 import { getPlan, PlanId, PRO_PERIOD_DAYS } from '@/lib/pricing';
 
-const TX_HASH_RE = /^[0-9a-fA-F]{64}$/;
+// BEP-20 / EVM transaction hashes are 0x-prefixed 64 hex chars. We accept
+// the raw 64-hex form too (the checkout page already strips `0x`).
+const TX_HASH_RE = /^(0x)?[0-9a-fA-F]{64}$/;
 
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured()) {
@@ -17,10 +19,17 @@ export async function POST(request: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Sign in required.' }, { status: 401 });
 
-  const { txHash, plan } = (await request.json()) as { txHash?: string; plan?: PlanId };
-  if (!txHash || !TX_HASH_RE.test(txHash)) {
+  const { txHash: rawTxHash, plan } = (await request.json()) as {
+    txHash?: string;
+    plan?: PlanId;
+  };
+  if (!rawTxHash || !TX_HASH_RE.test(rawTxHash)) {
     return NextResponse.json({ error: 'Invalid transaction hash.' }, { status: 400 });
   }
+  // Normalize to the 0x-prefixed lowercase form so the unique key in
+  // `payments.tx_hash` always sees the same value across BscScan/Etherscan
+  // copy-paste flavours.
+  const txHash = (rawTxHash.startsWith('0x') ? rawTxHash : `0x${rawTxHash}`).toLowerCase();
   if (!plan || plan === 'free') {
     return NextResponse.json({ error: 'Invalid plan.' }, { status: 400 });
   }
@@ -40,12 +49,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const address = getOwnerAddress('USDT_TRC20');
+  const address = getOwnerAddress('USDT_BEP20');
   if (!address) {
     return NextResponse.json({ error: 'Crypto payments not configured.' }, { status: 503 });
   }
 
-  const verification = await verifyUsdtTrc20(txHash, address, planDef.priceUSD);
+  const verification = await verifyUsdtBep20(txHash, address, planDef.priceUSD);
   if (!verification.ok) {
     return NextResponse.json(
       { error: verification.reason || 'Verification failed', details: verification },
@@ -57,7 +66,7 @@ export async function POST(request: NextRequest) {
   const { error: payErr } = await admin.from('payments').insert({
     user_id: user.id,
     tx_hash: txHash,
-    chain: 'USDT_TRC20',
+    chain: 'USDT_BEP20',
     amount: verification.amount ?? planDef.priceUSD,
     currency: 'USDT',
     plan_purchased: planDef.id,

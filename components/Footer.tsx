@@ -11,7 +11,7 @@ export default function Footer() {
               <span className="h-7 w-7 rounded-md bg-gradient-to-br from-fuchsia-500 via-indigo-500 to-sky-400 grid place-items-center font-bold text-white text-sm shadow-lg shadow-fuchsia-500/30">
                 K
               </span>
-              <span className="text-white font-semibold tracking-tight">kresume</span>
+              <span className="text-white font-semibold tracking-tight">kairesume</span>
             </Link>
             <p className="mt-3 text-xs text-white/50 leading-relaxed">
               ATS-friendly resumes & cover letters generated with AI. Free to try, pay once for unlimited use.
@@ -36,6 +36,11 @@ export default function Footer() {
                   Account
                 </Link>
               </li>
+              <li>
+                <Link href="/support" className="text-white/70 hover:text-white transition">
+                  Support
+                </Link>
+              </li>
             </ul>
           </div>
 
@@ -57,7 +62,7 @@ export default function Footer() {
         </div>
 
         <div className="mt-10 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-white/40">
-          <div>© {year} kresume. All rights reserved.</div>
+          <div>© {year} kairesume. All rights reserved.</div>
           <div>Inputs processed in-memory and discarded after generation.</div>
         </div>
       </div>

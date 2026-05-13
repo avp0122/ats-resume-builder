@@ -14,6 +14,12 @@ import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { effectivePlan, signedInFreeDownloadAllowed } from '@/lib/plan';
 import { SIGNED_IN_FREE_GENERATIONS } from '@/lib/pricing';
 
+// Local helper. We can't import from lib/usage without dragging in cookies().
+function clampFreeCount(plan: 'free' | 'pro', count: number): number {
+  if (plan === 'free') return Math.min(count, SIGNED_IN_FREE_GENERATIONS);
+  return count;
+}
+
 const cache = new Map<string, { result: any; timestamp: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -51,6 +57,19 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (!resumeText || resumeText.trim().length < 20) {
+      // PDF parsed but no meaningful text came out — usually means the PDF
+      // is image-only (scanned), uses an unusual font encoding, or was
+      // exported with text rendered as paths. We want a specific message
+      // instead of the generic "Resume cannot be empty" validation error.
+      return NextResponse.json(
+        {
+          error:
+            'We could not extract text from your resume. The file may be image-only, scanned, or use a non-standard font encoding. Try re-exporting as a text-based PDF (e.g. "Save as PDF" from Word/Google Docs) or upload a DOCX.',
+        },
+        { status: 400 }
+      );
+    }
 
     // Strip noisy whitespace, page numbers, repeated headers/footers from the
     // PDF/DOCX extraction. Keeps token count low so we fit Groq's free-tier
@@ -71,6 +90,7 @@ export async function POST(request: NextRequest) {
     let userEmail: string | null = null;
     let plan: 'free' | 'pro' = 'free';
     let proUntil: string | null = null;
+    let preGenCount = 0; // generations_count as of *before* this request
     if (isSupabaseConfigured()) {
       try {
         const supabase = createSupabaseServerClient();
@@ -80,11 +100,12 @@ export async function POST(request: NextRequest) {
           userEmail = user.email ?? null;
           const { data: profile } = await supabase
             .from('profiles')
-            .select('plan, pro_until')
+            .select('plan, pro_until, generations_count')
             .eq('id', user.id)
             .maybeSingle();
           plan = effectivePlan(profile);
           proUntil = profile?.pro_until ?? null;
+          preGenCount = profile?.generations_count ?? 0;
         }
       } catch {
         // Auth optional; continue as anon.
@@ -104,6 +125,45 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
+    }
+
+    // Early gate for signed-in FREE users: enforce the hard cap *before* we
+    // call the LLM. Without this, the count keeps growing past the limit
+    // because the original code only decided downloadAllowed=false at the
+    // end — the LLM had already run and the counter had already been
+    // incremented. That's the root cause of the 6–7 stored generations
+    // bug.
+    if (userId && plan === 'free' && preGenCount >= SIGNED_IN_FREE_GENERATIONS) {
+      // While we're here, opportunistically clamp any over-count that
+      // accumulated before this fix shipped, so the user's profile reads
+      // back the expected "3/3" instead of "6/3".
+      if (preGenCount > SIGNED_IN_FREE_GENERATIONS) {
+        try {
+          const admin = createSupabaseAdminClient();
+          await admin
+            .from('profiles')
+            .update({ generations_count: SIGNED_IN_FREE_GENERATIONS })
+            .eq('id', userId);
+        } catch (e) {
+          console.error('Free-plan count clamp failed (non-fatal):', e);
+        }
+      }
+      return NextResponse.json(
+        {
+          error: `You've used all ${SIGNED_IN_FREE_GENERATIONS} free generations. Upgrade to Pro for unlimited.`,
+          usage: {
+            count: SIGNED_IN_FREE_GENERATIONS,
+            freeLimit: SIGNED_IN_FREE_GENERATIONS,
+            downloadAllowed: false,
+            needsSignin: false,
+            signedIn: true,
+            plan: 'free' as const,
+            proUntil,
+            upgradeRequired: true,
+          },
+        },
+        { status: 402 }
+      );
     }
 
     cleanCache();
@@ -141,7 +201,11 @@ export async function POST(request: NextRequest) {
           .select('generations_count, full_name, contact_email, phone, location, date_of_birth, social_links')
           .eq('id', userId)
           .maybeSingle();
-        usageCount = (profile?.generations_count ?? 0) + 1;
+        const rawNext = (profile?.generations_count ?? 0) + 1;
+        // For free users we MUST clamp at the limit. Otherwise the counter
+        // keeps growing past 3 even though we deny downloads — that's
+        // what produced the "6/3" rows in the DB.
+        usageCount = clampFreeCount(plan, rawNext);
         if (plan === 'free') {
           downloadAllowed = signedInFreeDownloadAllowed(usageCount);
           needsSignin = false; // already signed in
@@ -220,6 +284,18 @@ export async function POST(request: NextRequest) {
       needsSignin = true;
     }
 
+    // Word + token counts for the UI. These are computed from the
+    // compressed (post-cleanup) inputs that the LLM actually saw — that's
+    // the number that matters for the budget the user is being shown.
+    const countWords = (s: string) =>
+      s.trim() ? s.trim().split(/\s+/).length : 0;
+    const inputStats = {
+      jdWords: countWords(compressedJd),
+      jdTokens: estimateTokens(compressedJd),
+      resumeWords: countWords(compressedResume),
+      resumeTokens: estimateTokens(compressedResume),
+    };
+
     return NextResponse.json({
       personalInfo: result.personalInfo,
       jobRole: result.jobRole,
@@ -230,9 +306,16 @@ export async function POST(request: NextRequest) {
       score: result.score,
       matchedKeywords: result.matchedKeywords,
       missingKeywords: result.missingKeywords,
+      inputStats,
       usage: {
         count: usageCount,
         freeLimit: userId ? SIGNED_IN_FREE_GENERATIONS : FREE_LIMIT,
+        remaining:
+          plan === 'pro'
+            ? null
+            : userId
+            ? Math.max(0, SIGNED_IN_FREE_GENERATIONS - usageCount)
+            : Math.max(0, FREE_LIMIT - usageCount),
         downloadAllowed,
         needsSignin,
         signedIn: !!userId,

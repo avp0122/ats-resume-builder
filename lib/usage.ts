@@ -1,7 +1,7 @@
 import { createHmac, randomBytes } from 'crypto';
 import { cookies } from 'next/headers';
 
-const COOKIE_NAME = 'kresume_usage';
+const COOKIE_NAME = 'kairesume_usage';
 const ANON_FREE_LIMIT = 1; // generations before signin is required to download
 export const SIGNED_IN_FREE_LIMIT = 3; // generations per period for signed-in free users
 

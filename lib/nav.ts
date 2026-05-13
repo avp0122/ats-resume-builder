@@ -7,5 +7,5 @@
  */
 export function startRouteProgress(): void {
   if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent('kresume:nav-start'));
+  window.dispatchEvent(new CustomEvent('kairesume:nav-start'));
 }

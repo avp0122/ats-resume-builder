@@ -9,6 +9,23 @@ import type { PersonalInfo } from '@/lib/llm';
 import { renderCoverLetterDocument, renderResumeDocument } from '@/lib/resumeTemplate';
 import { detectClient, type ClientInfo } from '@/lib/clientInfo';
 
+interface InputStats {
+  jdWords: number;
+  jdTokens: number;
+  resumeWords: number;
+  resumeTokens: number;
+}
+
+interface QuotaInfo {
+  signedIn: boolean;
+  plan: 'free' | 'pro';
+  count: number;
+  freeLimit: number;
+  remaining: number | null;
+  proUntil: string | null;
+  upgradeRequired: boolean;
+}
+
 interface GenerationResult {
   personalInfo: PersonalInfo;
   jobRole: string;
@@ -19,6 +36,7 @@ interface GenerationResult {
   score: number;
   matchedKeywords: string[];
   missingKeywords: string[];
+  inputStats?: InputStats;
   usage: {
     count: number;
     freeLimit: number;
@@ -74,12 +92,21 @@ export default function Home() {
   const [client, setClient] = useState<ClientInfo | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [quota, setQuota] = useState<QuotaInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setHydrated(true);
     // Async OS sniff (uses navigator.userAgentData when available).
     detectClient().then(setClient).catch(() => setClient(null));
+    // Pre-fetch the quota so we can disable the Generate button BEFORE the
+    // user pays for an LLM call they're not allowed to make.
+    fetch('/api/usage', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((q) => q && setQuota(q))
+      .catch(() => {
+        /* non-fatal: server-side gate still applies */
+      });
   }, []);
 
   useEffect(() => {
@@ -197,8 +224,25 @@ export default function Home() {
     }
   };
 
-  const jdWordCount = formState.jd.trim() ? formState.jd.trim().split(/\s+/).length : 0;
-  const canSubmit = formState.jd.trim().length > 0 && !!formState.resume && !isLoading;
+  const jdTrimmed = formState.jd.trim();
+  const jdWordCount = jdTrimmed ? jdTrimmed.split(/\s+/).length : 0;
+  // ~4 characters per token — the same heuristic the server uses for its
+  // Groq free-tier budget check, so the on-screen number matches what the
+  // backend will actually compare against.
+  const jdTokenCount = jdTrimmed ? Math.ceil(jdTrimmed.length / 4) : 0;
+  // Free-tier soft caps that mirror lib/llm.ts. Users see them as guidance
+  // BEFORE submitting so they don't get a server-side reject.
+  const TOKEN_BUDGET = 5200; // ~TPM 8000 minus 300 safety minus 2500 output
+  const JD_TOKEN_SOFT_CAP = 1800;
+  const overBudget = jdTokenCount > JD_TOKEN_SOFT_CAP;
+  // Signed-in free user who has used all 3 generations — Generate is gated.
+  const quotaExhausted =
+    !!quota && quota.signedIn && quota.plan === 'free' && quota.remaining === 0;
+  const canSubmit =
+    formState.jd.trim().length > 0 &&
+    !!formState.resume &&
+    !isLoading &&
+    !quotaExhausted;
 
   const previewResumeHtml = useMemo(
     () =>
@@ -258,22 +302,29 @@ export default function Home() {
           .replace(/^_+|_+$/g, '')
           .toLowerCase()
           .slice(0, max);
-      const parts = [
+      // Per-PDF filenames are derived from the candidate's name only
+      // (fullname_resume.pdf / fullname_coverletter.pdf) so the file inside
+      // the ZIP is portable and recognizable regardless of which job it was
+      // generated for. The ZIP filename itself still embeds the role +
+      // company so a user juggling multiple applications can tell their
+      // downloads apart.
+      const nameSlug = slug(result.personalInfo.fullName) || 'kairesume';
+      const zipParts = [
         slug(result.jobRole),
         slug(result.jobCompany),
         slug(result.personalInfo.fullName),
       ].filter(Boolean);
-      const baseName = parts.length > 0 ? parts.join('_') : 'kresume';
+      const zipBaseName = zipParts.length > 0 ? zipParts.join('_') : 'kairesume';
 
       const zip = new JSZip();
-      zip.file(`${baseName}_resume.pdf`, resumeBlob);
-      zip.file(`${baseName}_cover_letter.pdf`, coverBlob);
+      zip.file(`${nameSlug}_resume.pdf`, resumeBlob);
+      zip.file(`${nameSlug}_coverletter.pdf`, coverBlob);
       const zipBlob = await zip.generateAsync({ type: 'blob' });
 
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${baseName}.zip`;
+      a.download = `${zipBaseName}.zip`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -300,8 +351,13 @@ export default function Home() {
           <span className="block text-white">Beat the bots.</span>
           <span className="block gradient-text">Land the interview.</span>
         </h1>
-        <p className="mt-5 text-white/60 max-w-xl mx-auto text-base sm:text-lg">
-          Paste a job description, upload your resume — get an ATS-optimized rewrite, a tailored cover letter, and a match score in seconds.
+        <p className="mt-4 text-base sm:text-lg font-semibold text-amber-200">
+          kairesume is the cheapest AI resume builder — free to try, $4.99/mo Pro.
+        </p>
+        <p className="mt-3 text-white/60 max-w-xl mx-auto text-base sm:text-lg">
+          Paste a job description, upload your resume — get a free, AI-tailored,
+          ATS-optimized rewrite, a high-scoring cover letter, and an interview-best-match
+          score in seconds.
         </p>
 
         <div className="mt-7 grid sm:grid-cols-3 gap-2 max-w-2xl mx-auto text-xs">
@@ -310,6 +366,20 @@ export default function Home() {
           <TierBadge label="Pro" value="Unlimited · $4.99/mo" tone="vibrant" />
         </div>
       </header>
+
+      {/* Quota / upgrade promo for signed-in free users */}
+      {quota && quota.signedIn && quota.plan === 'free' && (
+        <section className="mb-6">
+          {quotaExhausted ? (
+            <UpgradePromo limit={quota.freeLimit} />
+          ) : (
+            <RemainingBanner
+              remaining={quota.remaining ?? quota.freeLimit}
+              limit={quota.freeLimit}
+            />
+          )}
+        </section>
+      )}
 
       {/* Form */}
       <section className="relative">
@@ -341,8 +411,20 @@ export default function Home() {
                 />
                 <div className="mt-1.5 flex justify-between text-xs text-white/40">
                   <span>Minimum ~50 characters</span>
-                  <span>{jdWordCount} words</span>
+                  <span>
+                    {jdWordCount} words ·{' '}
+                    <span className={overBudget ? 'text-rose-300 font-medium' : ''}>
+                      ~{jdTokenCount} tokens
+                    </span>
+                  </span>
                 </div>
+                {overBudget && (
+                  <p className="mt-1.5 text-[11px] text-rose-300/90 leading-snug">
+                    Job description is long — ~{jdTokenCount} of the ~{TOKEN_BUDGET}-token
+                    free-tier budget (combined with your resume). Trim it or you may exceed the
+                    rate limit.
+                  </p>
+                )}
               </div>
 
               {/* File upload */}
@@ -371,6 +453,9 @@ export default function Home() {
                       <p className="text-sm font-medium text-emerald-200 break-all">{formState.resume.name}</p>
                       <p className="text-xs text-white/40 mt-1">
                         {(formState.resume.size / 1024).toFixed(1)} KB · click to replace
+                      </p>
+                      <p className="text-[11px] text-white/40 mt-0.5">
+                        Token count shown after generation
                       </p>
                     </>
                   ) : (
@@ -453,6 +538,7 @@ export default function Home() {
 
       {result && (
         <section className="mt-10 space-y-6">
+          {result.inputStats && <InputStatsCard stats={result.inputStats} />}
           <ATSScore
             originalScore={result.originalScore}
             score={result.score}
@@ -541,10 +627,221 @@ export default function Home() {
         </section>
       )}
 
+      <SeoContent />
+
       <footer className="mt-16 mb-6 text-center text-xs text-white/40">
         Built with care. Inputs are processed in-memory and discarded after generation.
       </footer>
     </main>
+  );
+}
+
+function SeoContent() {
+  // Crawlable, keyword-rich content for organic search. Visible (not hidden)
+  // so it counts for SEO and isn't penalised as cloaking. The phrasing is
+  // built around the high-intent search terms: "free AI resume builder",
+  // "cheapest AI resume builder", "ATS resume", "tailored cover letter",
+  // "interview best match", "high scorer".
+  const faqs = [
+    {
+      q: 'Is kairesume really the cheapest AI resume builder?',
+      a: 'Yes. The free tier gives you a full AI-tailored, ATS-optimized resume and cover letter with zero signup. Pro is $4.99/month for unlimited generations — well below other AI resume builders.',
+    },
+    {
+      q: 'How does the ATS resume optimization work?',
+      a: 'We extract the key requirements from the job description, rewrite your resume to surface matching keywords and quantified achievements, and score the result against the role so you can see how high a match you are before applying.',
+    },
+    {
+      q: 'Do I get a tailored cover letter too?',
+      a: 'Every generation produces both a tailored resume and a tailored cover letter aligned to the role — written to highlight the best-match skills the recruiter is looking for.',
+    },
+    {
+      q: 'How do I become the high scorer for a job?',
+      a: 'Paste the full job description, upload your latest resume, and let kairesume rewrite it. The match-score panel tells you which keywords were covered and which to add for an interview-best-match outcome.',
+    },
+    {
+      q: 'Can I use kairesume for free?',
+      a: 'Yes — you get one free generation as an anonymous visitor, three free generations per month after signing up, and unlimited generations on Pro.',
+    },
+  ];
+
+  const faqJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqs.map((f) => ({
+      '@type': 'Question',
+      name: f.q,
+      acceptedAnswer: { '@type': 'Answer', text: f.a },
+    })),
+  };
+
+  return (
+    <section className="mt-16 sm:mt-20" aria-labelledby="seo-heading">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+      />
+      <div className="rounded-3xl border border-white/10 bg-slate-950/40 backdrop-blur-md p-6 sm:p-10">
+        <h2 id="seo-heading" className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+          The free, AI-tailored resume builder for ATS high scorers
+        </h2>
+        <p className="mt-3 text-white/70 max-w-2xl leading-relaxed">
+          kairesume is the cheapest AI resume builder online: a free, AI-powered tool that
+          rewrites your resume against any job description, produces a tailored cover letter,
+          and scores you for interview best match. Built for ATS — Applicant Tracking
+          Systems — so recruiters actually see your application.
+        </p>
+
+        <div className="mt-8 grid sm:grid-cols-2 gap-4">
+          <SeoBullet title="Free AI resume builder">
+            One free generation, no signup. Three free generations per month after signing
+            up. Pay only if you need unlimited — Pro is $4.99/month.
+          </SeoBullet>
+          <SeoBullet title="ATS-optimized & tailored">
+            Every resume is rewritten with the keywords, action verbs, and quantified
+            achievements the job description asks for — formatted ATS-clean.
+          </SeoBullet>
+          <SeoBullet title="Interview best match score">
+            See exactly which keywords matched, which are missing, and how high you score
+            against the role before you apply.
+          </SeoBullet>
+          <SeoBullet title="High scorer cover letter">
+            Get a tailored, role-specific cover letter alongside the resume — already
+            aligned to the same best-match keywords.
+          </SeoBullet>
+        </div>
+
+        <h3 className="mt-10 text-xl font-semibold text-white">FAQ</h3>
+        <dl className="mt-4 space-y-5">
+          {faqs.map((f) => (
+            <div key={f.q}>
+              <dt className="text-white font-medium">{f.q}</dt>
+              <dd className="mt-1 text-white/70 leading-relaxed">{f.a}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </section>
+  );
+}
+
+function SeoBullet({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      <h3 className="text-white font-semibold">{title}</h3>
+      <p className="mt-1.5 text-sm text-white/70 leading-relaxed">{children}</p>
+    </div>
+  );
+}
+
+function RemainingBanner({ remaining, limit }: { remaining: number; limit: number }) {
+  return (
+    <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/5 text-emerald-100/90 px-4 py-3 text-sm flex items-center justify-between gap-3 flex-wrap">
+      <span>
+        <span className="font-semibold text-white">{remaining}</span> of {limit} free
+        generations remaining this period.
+      </span>
+      <Link
+        href="/pricing"
+        className="text-xs font-semibold text-emerald-200 hover:text-white underline-offset-2 hover:underline"
+      >
+        Go Pro for unlimited →
+      </Link>
+    </div>
+  );
+}
+
+function UpgradePromo({ limit }: { limit: number }) {
+  return (
+    <div className="relative">
+      <div className="absolute -inset-1 rounded-3xl bg-gradient-to-br from-amber-400/30 via-fuchsia-500/30 to-indigo-500/30 blur-2xl opacity-70 pointer-events-none" />
+      <div className="relative rounded-3xl border border-amber-400/30 bg-slate-950/70 backdrop-blur-xl p-6 sm:p-8">
+        <div className="flex items-start gap-4">
+          <div className="hidden sm:grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 font-bold shadow-lg shadow-fuchsia-500/30 flex-shrink-0">
+            ★
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg sm:text-xl font-bold text-white">
+              You&apos;ve used all {limit} free generations
+            </h2>
+            <p className="mt-1.5 text-sm text-white/70 leading-relaxed">
+              Generate is paused on your account. Upgrade to Pro for{' '}
+              <span className="font-semibold text-amber-200">unlimited</span> tailored
+              resumes &amp; cover letters — pay once a month in crypto, no card on file,
+              no auto-renew.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link
+                href="/pricing"
+                className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 text-sm font-semibold hover:opacity-90 transition shadow-lg shadow-fuchsia-500/30"
+              >
+                Upgrade — $4.99 / month
+              </Link>
+              <Link
+                href="/account"
+                className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm font-medium hover:bg-white/10 transition"
+              >
+                View account
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InputStatsCard({ stats }: { stats: InputStats }) {
+  const totalTokens = stats.jdTokens + stats.resumeTokens;
+  // Mirror the lib/llm.ts budget so the user sees the same number the
+  // server uses to decide if a request fits.
+  const SOFT_CAP = 5200; // TPM 8000 − 300 safety − 2500 for output
+  const pct = Math.min(100, Math.round((totalTokens / SOFT_CAP) * 100));
+  const exceeded = totalTokens > SOFT_CAP;
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-4 sm:p-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h3 className="text-sm font-semibold text-white">Input size</h3>
+        <span className={`text-xs ${exceeded ? 'text-rose-300' : 'text-white/50'}`}>
+          {totalTokens} / {SOFT_CAP} tokens used
+        </span>
+      </div>
+      <div className="mt-3 grid sm:grid-cols-2 gap-2 text-xs">
+        <div className="rounded-lg border border-white/10 bg-slate-950/40 p-3">
+          <div className="text-white/40 uppercase tracking-widest text-[10px]">Job description</div>
+          <div className="mt-1 text-white/80">
+            <span className="font-semibold text-white">{stats.jdWords}</span> words ·{' '}
+            <span className="font-semibold text-white">~{stats.jdTokens}</span> tokens
+          </div>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-slate-950/40 p-3">
+          <div className="text-white/40 uppercase tracking-widest text-[10px]">Resume</div>
+          <div className="mt-1 text-white/80">
+            <span className="font-semibold text-white">{stats.resumeWords}</span> words ·{' '}
+            <span className="font-semibold text-white">~{stats.resumeTokens}</span> tokens
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 h-1.5 rounded-full bg-white/5 overflow-hidden">
+        <div
+          className={`h-full ${
+            exceeded
+              ? 'bg-rose-400'
+              : pct > 80
+              ? 'bg-amber-400'
+              : 'bg-gradient-to-r from-fuchsia-500 via-indigo-500 to-sky-400'
+          }`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {exceeded && (
+        <p className="mt-2 text-[11px] text-rose-300/90 leading-snug">
+          Over the free-tier budget by ~{totalTokens - SOFT_CAP} tokens. Why: combined inputs
+          leave too little room for the model&apos;s response. Shorten the longer one
+          (~{Math.ceil((totalTokens - SOFT_CAP) * 0.75)} fewer words) and retry.
+        </p>
+      )}
+    </div>
   );
 }
 

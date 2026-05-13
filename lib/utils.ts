@@ -91,7 +91,8 @@ export function formatErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     const msg = error.message;
 
-    // Pre-flight: input too large to fit the free-tier rate limit.
+    // Pre-flight: input too large to fit the free-tier rate limit. The
+    // upstream message already includes a per-input token breakdown.
     if (/too large for the free-tier rate limit/i.test(msg)) {
       return msg; // already user-friendly
     }
@@ -195,9 +196,65 @@ export function validateInputs(jd: string, resume: string): { valid: boolean; er
 }
 
 /**
- * Extract text from PDF file buffer
+ * Extract text from PDF file buffer.
+ *
+ * Primary: pdfjs-dist (Mozilla's renderer). Robust across multi-column
+ * layouts and the export quirks of resume builders like Cake Resume,
+ * Canva, Novoresume — pdfreader silently returns empty text for several
+ * of those.
+ *
+ * Fallback: pdfreader, retained for the small set of PDFs where pdfjs
+ * stumbles (rare custom CMap encodings).
  */
 export async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
+  let primary = '';
+  try {
+    primary = await extractTextWithPdfJs(buffer);
+  } catch (err) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('pdfjs-dist extraction failed, falling back to pdfreader:', err);
+    }
+  }
+  if (primary && primary.trim().length >= 20) return primary.trim();
+
+  try {
+    const fallback = await extractTextWithPdfReader(buffer);
+    if (fallback && fallback.trim().length >= 20) return fallback.trim();
+    // Return whichever has more content if both are short.
+    return (primary.length >= fallback.length ? primary : fallback).trim();
+  } catch (err) {
+    if (primary) return primary.trim();
+    throw err;
+  }
+}
+
+async function extractTextWithPdfJs(buffer: ArrayBuffer): Promise<string> {
+  // The legacy build is the supported entry point for Node — the default
+  // ESM build assumes a browser worker that we don't have here.
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  // Disable the worker so pdfjs runs in-process. The worker entry path
+  // varies between Next dev/build and would otherwise need bundling.
+  const loadingTask = (pdfjs as any).getDocument({
+    data: new Uint8Array(buffer),
+    disableWorker: true,
+    isEvalSupported: false,
+    useSystemFonts: true,
+  });
+  const pdf = await loadingTask.promise;
+  const pages: string[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = (content.items as Array<any>)
+      .map((it) => (typeof it?.str === 'string' ? it.str : ''))
+      .filter((s) => s.length > 0)
+      .join(' ');
+    pages.push(pageText);
+  }
+  return pages.join('\n');
+}
+
+function extractTextWithPdfReader(buffer: ArrayBuffer): Promise<string> {
   return new Promise((resolve, reject) => {
     const pdfReader = new PdfReader();
     let text = '';

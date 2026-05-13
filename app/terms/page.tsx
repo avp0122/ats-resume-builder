@@ -1,4 +1,4 @@
-export const metadata = { title: 'Terms & Conditions — kresume' };
+export const metadata = { title: 'Terms & Conditions — kairesume' };
 
 export default function TermsPage() {
   return (
@@ -11,7 +11,7 @@ export default function TermsPage() {
       <article className="mt-10 space-y-8 leading-relaxed text-sm">
         <Section title="1. Service">
           <p>
-            kresume (&quot;the Service&quot;) provides AI-generated resume and cover letter optimization. By using the
+            kairesume (&quot;the Service&quot;) provides AI-generated resume and cover letter optimization. By using the
             Service you agree to these Terms. If you do not agree, do not use the Service.
           </p>
         </Section>
@@ -39,7 +39,7 @@ export default function TermsPage() {
 
         <Section title="5. Payments">
           <p>
-            Paid plans are charged once via cryptocurrency (USDT TRC-20). Payments are non-refundable except where
+            Paid plans are charged once via cryptocurrency (USDT BEP-20 on Binance Smart Chain). Payments are non-refundable except where
             required by law. You are responsible for paying any applicable taxes.
           </p>
         </Section>

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import AuthForm from '@/components/AuthForm';
 import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
 
-export const metadata = { title: 'Sign in — kresume' };
+export const metadata = { title: 'Sign in — kairesume' };
 
 export default async function SignInPage({
   searchParams,

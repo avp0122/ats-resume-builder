@@ -64,7 +64,7 @@ A production-ready web application that generates ATS-optimized resumes and tail
 
 5. **Open in browser**
    
-   Navigate to [http://localhost:3000](http://localhost:3000)
+   Navigate to [https://kairesume.fit](https://kairesume.fit)
 
 ## 📖 Usage
 
@@ -191,7 +191,7 @@ The generated resumes follow these ATS guidelines:
 - The app has built-in retry logic for transient errors
 
 ### PDF download not working
-- Ensure pop-ups are allowed for localhost/your domain
+- Ensure pop-ups are allowed for https://kairesume.fit
 - Try a different browser
 - Check browser console for errors
 
