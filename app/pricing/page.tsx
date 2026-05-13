@@ -37,13 +37,14 @@ export default async function PricingPage() {
       <header className="text-center mb-12">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-white/70 text-xs font-medium mb-4">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          $4.99 / month. Cancel by not paying.
+          From $4.99 / month — save up to 30% with longer terms.
         </div>
         <h1 className="text-4xl sm:text-5xl font-bold tracking-tight bg-gradient-to-r from-white via-fuchsia-200 to-sky-200 bg-clip-text text-transparent">
           Simple, transparent pricing
         </h1>
         <p className="mt-4 text-white/60 max-w-xl mx-auto">
-          Try it free, then go Pro for unlimited generations. Pay each month in crypto — no card on file, no auto-renew.
+          Try it free, then go Pro for unlimited generations. Choose monthly, 3 months
+          (20% off) or 1 year (30% off). Pay in crypto — no card on file, no auto-renew.
         </p>
       </header>
 

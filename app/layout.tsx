@@ -4,6 +4,7 @@ import './globals.css';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import RouteProgress from '@/components/RouteProgress';
+import SupportWidget from '@/components/SupportWidget';
 
 const SITE_URL = 'https://kairesume.fit';
 const SITE_NAME = 'kairesume';
@@ -125,6 +126,7 @@ export default function RootLayout({
         <Navbar />
         <div className="flex-1">{children}</div>
         <Footer />
+        <SupportWidget />
       </body>
     </html>
   );

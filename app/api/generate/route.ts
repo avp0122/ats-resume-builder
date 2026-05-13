@@ -87,7 +87,6 @@ export async function POST(request: NextRequest) {
 
     // Identify user (signed in or anonymous).
     let userId: string | null = null;
-    let userEmail: string | null = null;
     let plan: 'free' | 'pro' = 'free';
     let proUntil: string | null = null;
     let preGenCount = 0; // generations_count as of *before* this request
@@ -97,7 +96,6 @@ export async function POST(request: NextRequest) {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           userId = user.id;
-          userEmail = user.email ?? null;
           const { data: profile } = await supabase
             .from('profiles')
             .select('plan, pro_until, generations_count')
@@ -186,19 +184,22 @@ export async function POST(request: NextRequest) {
 
     if (userId) {
       // Signed in — Pro is unlimited; free is gated at SIGNED_IN_FREE_GENERATIONS.
-      // Bump the profile counter via the user's session client so this
-      // works WITHOUT requiring SUPABASE_SECRET_KEY (RLS lets a user
-      // update their own profile). Then write the per-upload row into
-      // resume_uploads with the freshly-extracted contact info + OS so
-      // we keep history of every distinct resume the user uploads.
+      // Bump the generations_count on the profile (via the user's session
+      // client so this works WITHOUT a service-role key — RLS lets a user
+      // update their own profile). Then write a row into resume_uploads
+      // with the resume-derived contact info, target role/company, OS
+      // info, and the scores. Each uploaded resume gets its own row;
+      // profiles holds only USER state (plan + counter).
       try {
         const supabase = createSupabaseServerClient();
         const pi = result.personalInfo;
 
-        // Profile counter + one-time backfill of contact fields when empty.
+        // Profile holds USER state only (plan + generations counter). The
+        // resume-derived contact block (name/phone/location/links) goes
+        // into resume_uploads below — see migration 008.
         const { data: profile } = await supabase
           .from('profiles')
-          .select('generations_count, full_name, contact_email, phone, location, date_of_birth, social_links')
+          .select('generations_count')
           .eq('id', userId)
           .maybeSingle();
         const rawNext = (profile?.generations_count ?? 0) + 1;
@@ -215,25 +216,6 @@ export async function POST(request: NextRequest) {
           id: userId,
           generations_count: usageCount,
         };
-        if (pi.fullName && !profile?.full_name) profilePatch.full_name = pi.fullName;
-        if (pi.email && !profile?.contact_email) profilePatch.contact_email = pi.email;
-        if (!profile?.contact_email && userEmail && !profilePatch.contact_email) {
-          profilePatch.contact_email = userEmail;
-        }
-        if (pi.phone && !profile?.phone) profilePatch.phone = pi.phone;
-        if (pi.location && !profile?.location) profilePatch.location = pi.location;
-        if (pi.dateOfBirth && !profile?.date_of_birth) profilePatch.date_of_birth = pi.dateOfBirth;
-        const existingLinks =
-          profile?.social_links && typeof profile.social_links === 'object'
-            ? (profile.social_links as Record<string, string>)
-            : {};
-        const mergedLinks: Record<string, string> = { ...existingLinks };
-        for (const [k, v] of Object.entries(pi.socialLinks) as Array<[string, string | undefined]>) {
-          if (v && !mergedLinks[k]) mergedLinks[k] = v;
-        }
-        if (JSON.stringify(mergedLinks) !== JSON.stringify(existingLinks)) {
-          profilePatch.social_links = mergedLinks;
-        }
 
         const { error: profileErr } = await supabase
           .from('profiles')

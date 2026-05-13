@@ -546,84 +546,111 @@ export default function Home() {
             missing={result.missingKeywords}
           />
 
-          {result.usage.downloadAllowed ? (
-            <>
-              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
-                <h2 className="text-xl font-semibold tracking-tight text-white">Results</h2>
-                <div className="flex items-center gap-2 self-start sm:self-auto">
-                  <div className="inline-flex bg-white/5 rounded-xl p-1 border border-white/10">
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('resume')}
-                      className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition ${
-                        activeTab === 'resume'
-                          ? 'bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow'
-                          : 'text-white/60 hover:text-white'
-                      }`}
-                    >
-                      Resume
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('cover')}
-                      className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition ${
-                        activeTab === 'cover'
-                          ? 'bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow'
-                          : 'text-white/60 hover:text-white'
-                      }`}
-                    >
-                      Cover letter
-                    </button>
+          {(() => {
+            // Three result states we have to render:
+            //   1. downloadAllowed → full preview + working download
+            //   2. anonymous (!signedIn && !downloadAllowed) → blurred preview
+            //      with a disabled Download button. Visitors can SEE the
+            //      result (proof we did the work) but must sign up free
+            //      to actually use it. Per product ask.
+            //   3. signed-in free user at the cap → original PaywallCard
+            //      / UpgradePromo (Pro is the only unlock).
+            const anonymous = !result.usage.signedIn && !result.usage.downloadAllowed;
+            const showPreview = result.usage.downloadAllowed || anonymous;
+
+            if (!showPreview) {
+              return (
+                <PaywallCard
+                  signedIn={result.usage.signedIn}
+                  freeLimit={result.usage.freeLimit}
+                />
+              );
+            }
+
+            return (
+              <>
+                <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <h2 className="text-xl font-semibold tracking-tight text-white">Results</h2>
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <div className="inline-flex bg-white/5 rounded-xl p-1 border border-white/10">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('resume')}
+                        className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition ${
+                          activeTab === 'resume'
+                            ? 'bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow'
+                            : 'text-white/60 hover:text-white'
+                        }`}
+                      >
+                        Resume
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('cover')}
+                        className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition ${
+                          activeTab === 'cover'
+                            ? 'bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow'
+                            : 'text-white/60 hover:text-white'
+                        }`}
+                      >
+                        Cover letter
+                      </button>
+                    </div>
+                    <DownloadButton
+                      onClick={downloadZip}
+                      disabled={anonymous || downloading}
+                      downloading={downloading}
+                      lockedReason={anonymous ? 'Sign up free to download' : undefined}
+                    />
                   </div>
-                  <button
-                    type="button"
-                    onClick={downloadZip}
-                    disabled={downloading}
-                    title="Downloads a ZIP with the resume and cover letter PDFs"
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition shadow bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {downloading ? (
-                      <>
-                        <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.3" strokeWidth="4" />
-                          <path d="M22 12a10 10 0 01-10 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-                        </svg>
-                        Preparing…
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-                          <path d="M10 3v10m0 0l-3.5-3.5M10 13l3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                        Download .zip
-                      </>
-                    )}
-                  </button>
                 </div>
-              </div>
 
-              {downloadError && (
-                <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 text-rose-200 text-sm p-3">
-                  {downloadError}
-                </div>
-              )}
+                {anonymous && (
+                  <div className="rounded-xl border border-amber-400/30 bg-amber-500/5 text-amber-100/90 p-3.5 text-xs flex items-start gap-2">
+                    <svg className="w-4 h-4 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                      <path
+                        fillRule="evenodd"
+                        d="M10 1a4 4 0 00-4 4v3H5a2 2 0 00-2 2v7a2 2 0 002 2h10a2 2 0 002-2v-7a2 2 0 00-2-2h-1V5a4 4 0 00-4-4zm2 7V5a2 2 0 10-4 0v3h4z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <div>
+                      <span className="font-semibold text-amber-200">Preview locked.</span>{' '}
+                      Sign up free to view the full optimized resume + cover letter and
+                      download the PDF — no card required.
+                      <Link
+                        href="/signup"
+                        className="ml-2 underline decoration-amber-300/50 hover:decoration-amber-200 text-amber-100 font-semibold"
+                      >
+                        Sign up →
+                      </Link>
+                    </div>
+                  </div>
+                )}
 
-              {activeTab === 'resume' ? (
-                <ResumePreview
-                  previewHtml={previewResumeHtml}
-                  title="ATS-Optimized Resume"
-                />
-              ) : (
-                <ResumePreview
-                  previewHtml={previewCoverHtml}
-                  title="Tailored Cover Letter"
-                  copyText={pdfCoverHtml}
-                />
-              )}
-            </>
-          ) : (
-            <PaywallCard signedIn={result.usage.signedIn} freeLimit={result.usage.freeLimit} />
-          )}
+                {downloadError && (
+                  <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 text-rose-200 text-sm p-3">
+                    {downloadError}
+                  </div>
+                )}
+
+                <BlurGate locked={anonymous}>
+                  {activeTab === 'resume' ? (
+                    <ResumePreview
+                      previewHtml={previewResumeHtml}
+                      title="ATS-Optimized Resume"
+                    />
+                  ) : (
+                    <ResumePreview
+                      previewHtml={previewCoverHtml}
+                      title="Tailored Cover Letter"
+                      copyText={anonymous ? undefined : pdfCoverHtml}
+                    />
+                  )}
+                </BlurGate>
+              </>
+            );
+          })()}
         </section>
       )}
 
@@ -730,6 +757,117 @@ function SeoBullet({ title, children }: { title: string; children: React.ReactNo
     <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
       <h3 className="text-white font-semibold">{title}</h3>
       <p className="mt-1.5 text-sm text-white/70 leading-relaxed">{children}</p>
+    </div>
+  );
+}
+
+function DownloadButton({
+  onClick,
+  disabled,
+  downloading,
+  lockedReason,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+  downloading: boolean;
+  /** When provided, the button visually shows a lock and a sign-up tooltip. */
+  lockedReason?: string;
+}) {
+  const locked = !!lockedReason;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={lockedReason || 'Downloads a ZIP with the resume and cover letter PDFs'}
+      aria-label={lockedReason || 'Download .zip'}
+      className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition shadow ${
+        locked
+          ? 'bg-white/5 border border-white/10 text-white/40 cursor-not-allowed'
+          : 'bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed'
+      }`}
+    >
+      {locked ? (
+        <>
+          <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+            <path
+              fillRule="evenodd"
+              d="M10 1a4 4 0 00-4 4v3H5a2 2 0 00-2 2v7a2 2 0 002 2h10a2 2 0 002-2v-7a2 2 0 00-2-2h-1V5a4 4 0 00-4-4zm2 7V5a2 2 0 10-4 0v3h4z"
+              clipRule="evenodd"
+            />
+          </svg>
+          Download (sign up)
+        </>
+      ) : downloading ? (
+        <>
+          <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.3" strokeWidth="4" />
+            <path d="M22 12a10 10 0 01-10 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+          </svg>
+          Preparing…
+        </>
+      ) : (
+        <>
+          <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M10 3v10m0 0l-3.5-3.5M10 13l3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Download .zip
+        </>
+      )}
+    </button>
+  );
+}
+
+/**
+ * Wraps the preview with a CSS blur + a sign-up CTA overlay when locked.
+ * The blurred content is still rendered to the DOM (so users see it's
+ * "real") but is unreadable — and pointer events on it are blocked so
+ * inner buttons (Copy, etc.) can't be clicked through the overlay.
+ */
+function BlurGate({ locked, children }: { locked: boolean; children: React.ReactNode }) {
+  if (!locked) return <>{children}</>;
+  return (
+    <div className="relative">
+      <div
+        aria-hidden
+        className="select-none pointer-events-none"
+        style={{ filter: 'blur(7px)', WebkitFilter: 'blur(7px)' }}
+      >
+        {children}
+      </div>
+      <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px] grid place-items-center p-4">
+        <div className="text-center max-w-sm rounded-2xl border border-white/10 bg-slate-950/70 backdrop-blur-xl p-6 shadow-2xl">
+          <div className="mx-auto h-11 w-11 rounded-full bg-gradient-to-br from-amber-400 via-fuchsia-500 to-indigo-500 grid place-items-center text-slate-950 shadow-lg shadow-fuchsia-500/30 mb-3">
+            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+              <path
+                fillRule="evenodd"
+                d="M10 1a4 4 0 00-4 4v3H5a2 2 0 00-2 2v7a2 2 0 002 2h10a2 2 0 002-2v-7a2 2 0 00-2-2h-1V5a4 4 0 00-4-4zm2 7V5a2 2 0 10-4 0v3h4z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </div>
+          <h3 className="text-lg font-bold text-white">Sign up free to view & download</h3>
+          <p className="mt-1.5 text-sm text-white/70 leading-relaxed">
+            Your optimized resume + tailored cover letter are ready. Create a free
+            account in 10 seconds to unlock the preview and download the PDFs — no
+            card required.
+          </p>
+          <div className="mt-4 flex flex-col sm:flex-row gap-2 justify-center">
+            <Link
+              href="/signup"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-gradient-to-r from-amber-400 via-fuchsia-500 to-indigo-500 text-slate-950 text-sm font-semibold hover:opacity-90 transition shadow-lg shadow-fuchsia-500/30"
+            >
+              Sign up free
+            </Link>
+            <Link
+              href="/signin"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm font-medium hover:bg-white/10 transition"
+            >
+              I have an account
+            </Link>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
