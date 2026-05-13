@@ -10,16 +10,21 @@ export default function PrivacyPage() {
         <Section title="1. What we collect">
           <p>
             <strong className="text-white">Account data:</strong> when you sign up we store your email and an
-            authentication identifier via Supabase.
+            authentication identifier via Supabase, plus your operating system, browser type and version, and
+            approximate geographic location (country and city, looked up from your IP). These help us with support
+            and abuse-prevention.
           </p>
           <p>
             <strong className="text-white">Usage data:</strong> we keep an aggregate count of generations on your
-            profile.
+            profile and a per-generation record (target role, target company, ATS score, and the contact details
+            extracted from the resume — name, email, phone, location, links). Anonymous generations are stored
+            against a random identifier in a signed HTTP-only cookie until you sign up, at which point they are
+            attached to your account.
           </p>
           <p>
-            <strong className="text-white">Resume content:</strong> uploaded resumes and pasted job descriptions are
-            processed in-memory by our AI provider (Groq) and discarded after the response is returned. We do not
-            retain the original files.
+            <strong className="text-white">Resume content:</strong> the resume file and job description text are
+            processed in-memory by our AI provider (Groq) and discarded after the response is returned — we do not
+            retain the raw files. Only the structured fields above are persisted.
           </p>
         </Section>
 
@@ -32,22 +37,28 @@ export default function PrivacyPage() {
 
         <Section title="3. Cookies">
           <p>
-            We use a single signed HTTP-only cookie to track free-tier generation counts for anonymous users, plus
+            We use two signed HTTP-only cookies for anonymous visitors: one tracks free-tier generation counts,
+            the other carries a random identifier so the resumes you generate before signing up can be attached to
+            your account when you sign up. Both expire after one year. Signed-in users additionally receive
             standard authentication cookies issued by Supabase.
           </p>
         </Section>
 
         <Section title="4. Third parties">
           <p>
-            We use Groq (LLM provider) to generate content, Supabase to host the database and authentication, and
-            Etherscan (BscScan + Etherscan, unified V2 API) to verify USDT transactions on Binance Smart Chain (BEP-20) and Ethereum (ERC-20). These providers have their own privacy policies.
+            We use Groq (LLM provider) to generate content, Supabase to host the database and authentication, ipapi.co
+            for approximate geo-IP lookup at signup, and Etherscan (BscScan + Etherscan, unified V2 API) to verify
+            USDT transactions on Binance Smart Chain (BEP-20) and Ethereum (ERC-20). These providers have their own
+            privacy policies.
           </p>
         </Section>
 
         <Section title="5. Data deletion">
           <p>
-            You can delete your account and associated profile data at any time by contacting us. Anonymous
-            generation counts are automatically discarded when the cookie expires.
+            You can delete your account and all associated profile and generation records at any time by contacting
+            us. Anonymous generation records are attached to your account when you sign up; otherwise they remain
+            tied to the random cookie identifier and are discarded along with the cookie when it expires (one year)
+            or when you clear your browser data.
           </p>
         </Section>
 

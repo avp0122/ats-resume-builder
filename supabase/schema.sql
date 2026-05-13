@@ -27,9 +27,14 @@ create table if not exists public.profiles (
 create index if not exists profiles_pro_until_idx on public.profiles (pro_until);
 create index if not exists profiles_email_idx on public.profiles (lower(email));
 
+-- resume_uploads stores one row per generation. user_id is nullable so
+-- anonymous visitors can be tracked via anon_id (a signed cookie) and
+-- their rows are claimed on signup by swapping anon_id → user_id.
+-- See migration 011 for the constraint history.
 create table if not exists public.resume_uploads (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete cascade,
+  anon_id text,
   full_name text,
   contact_email text,
   phone text,
@@ -42,11 +47,18 @@ create table if not exists public.resume_uploads (
   client_version text,
   original_score int,
   score int,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint resume_uploads_owner_set check (
+    (user_id is not null and anon_id is null) or
+    (user_id is null and anon_id is not null)
+  )
 );
 
 create index if not exists resume_uploads_user_id_created_at_idx
   on public.resume_uploads (user_id, created_at desc);
+create index if not exists resume_uploads_anon_id_idx
+  on public.resume_uploads (anon_id)
+  where anon_id is not null;
 
 create table if not exists public.payments (
   id uuid primary key default gen_random_uuid(),
