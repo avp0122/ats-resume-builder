@@ -8,7 +8,7 @@ import {
   getProTier,
   PlanId,
 } from '@/lib/pricing';
-import { getOwnerAddress, isValidEvmAddress } from '@/lib/crypto';
+import { getOwnerAddress, isValidAddressForChain } from '@/lib/crypto';
 
 /**
  * Create a crypto invoice. Returns an order code + recipient address + amount.
@@ -49,11 +49,14 @@ export async function POST(request: NextRequest) {
       { status: 503 }
     );
   }
-  if (!isValidEvmAddress(address)) {
+  if (!isValidAddressForChain(chain, address)) {
+    const expectedShape =
+      chain === 'USDT_TRC20'
+        ? 'a 34-character base58 Tron address starting with "T"'
+        : 'a 0x-prefixed 40-character hex address';
     return NextResponse.json(
       {
-        error:
-          'Crypto receive address is misconfigured. Owner address must be a 0x-prefixed 40-character hex address.',
+        error: `Crypto receive address for ${chain} is misconfigured. Owner address must be ${expectedShape}.`,
       },
       { status: 503 }
     );
