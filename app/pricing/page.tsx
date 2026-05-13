@@ -39,7 +39,11 @@ export default async function PricingPage() {
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
           From $4.99 / month — save up to 30% with longer terms.
         </div>
-        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight bg-gradient-to-r from-white via-fuchsia-200 to-sky-200 bg-clip-text text-transparent">
+        {/* leading-[1.15] + pb-1 keeps the gradient mask from clipping
+            the descenders on "p" in Simple/transparent/pricing — a known
+            bg-clip-text quirk where the masked area excludes the part of
+            the line-box below the baseline. */}
+        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight leading-[1.15] pb-1 bg-gradient-to-r from-white via-fuchsia-200 to-sky-200 bg-clip-text text-transparent">
           Simple, transparent pricing
         </h1>
         <p className="mt-4 text-white/60 max-w-xl mx-auto">
