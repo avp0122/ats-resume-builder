@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { parseUserAgent } from '@/lib/userAgent';
+import { clientIpFromHeaders, lookupGeoIp } from '@/lib/geoip';
 
 // Public site URL used in confirmation emails. Falls back to the request
 // origin so previews on Vercel preview URLs still work, then to the prod
@@ -48,6 +51,51 @@ export async function POST(request: NextRequest) {
       { error: 'An account with that email already exists. Try signing in instead.' },
       { status: 409 }
     );
+  }
+
+  // Best-effort signup metadata write. We capture:
+  //   - the email (the handle_new_user trigger does too — this is the
+  //     belt-and-suspenders write in case the trigger isn't installed)
+  //   - parsed User-Agent (OS + browser family + version)
+  //   - client IP from the proxy headers
+  //   - geo-IP (country / city) — done last because it makes an external
+  //     call, kept under a 2-second timeout in lib/geoip.ts.
+  //
+  // Failures here MUST NOT block the signup response — the user account
+  // already exists by this point. Any error is logged and swallowed.
+  if (data.user) {
+    const userId = data.user.id;
+    const ua = parseUserAgent(request.headers.get('user-agent'));
+    const ip = clientIpFromHeaders(request.headers);
+    const geo = await lookupGeoIp(ip);
+
+    const patch: Record<string, unknown> = {
+      id: userId,
+      email,
+      signup_os: ua.os,
+      signup_browser: ua.browser,
+      signup_browser_version: ua.browserVersion,
+      signup_country: geo.country,
+      signup_city: geo.city,
+      signup_ip: ip === 'unknown' ? null : ip,
+    };
+
+    try {
+      // The auth.signUp call may have created an unconfirmed user with no
+      // active session yet (depends on Supabase project settings). The
+      // user's session client won't authenticate as them in that case, so
+      // use the admin client for the upsert. RLS is bypassed by design
+      // because we're writing fields the trigger seeded.
+      const admin = createSupabaseAdminClient();
+      const { error: upsertErr } = await admin
+        .from('profiles')
+        .upsert(patch, { onConflict: 'id' });
+      if (upsertErr) {
+        console.error('Signup metadata upsert failed (non-fatal):', upsertErr);
+      }
+    } catch (e) {
+      console.error('Signup metadata write threw (non-fatal):', e);
+    }
   }
 
   return NextResponse.json({ user: data.user });
