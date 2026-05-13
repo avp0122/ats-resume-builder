@@ -9,6 +9,7 @@ import {
   estimateTokens,
 } from '@/lib/utils';
 import { bumpAnonCount, readAnonCount, FREE_LIMIT } from '@/lib/usage';
+import { ensureAnonId } from '@/lib/anonId';
 import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { effectivePlan, signedInFreeDownloadAllowed } from '@/lib/plan';
@@ -257,13 +258,48 @@ export async function POST(request: NextRequest) {
         console.error('Signed-in profile/upload write failed (non-fatal):', e);
       }
     } else {
-      // Anonymous flow: we let the user generate (within ANON_FREE_LIMIT)
-      // and see the ATS scores + matched/missing keywords, but the actual
-      // optimized resume + cover letter are paywalled. They have to sign
-      // up to unlock preview / copy / download.
+      // Anonymous flow: bump the usage cookie + write a resume_uploads
+      // row keyed by a stable per-visitor anon_id. When the visitor
+      // later signs up, /api/auth/signup claims these rows by setting
+      // user_id and clearing anon_id (atomic UPDATE).
+      //
+      // The preview is still blurred + download is still gated until
+      // the visitor signs up — storage is a *parallel* concern, not a
+      // grant of access.
       usageCount = bumpAnonCount();
       downloadAllowed = false;
       needsSignin = true;
+
+      try {
+        const anonId = ensureAnonId();
+        const pi = result.personalInfo;
+        const admin = createSupabaseAdminClient();
+        const { error: anonUploadErr } = await admin.from('resume_uploads').insert({
+          user_id: null,
+          anon_id: anonId,
+          full_name: pi.fullName || null,
+          contact_email: pi.email || null,
+          phone: pi.phone || null,
+          location: pi.location || null,
+          date_of_birth: pi.dateOfBirth || null,
+          social_links: pi.socialLinks || {},
+          target_role: result.jobRole || null,
+          target_company: result.jobCompany || null,
+          client_os: clientOs,
+          client_version: clientVersion,
+          original_score: result.originalScore,
+          score: result.score,
+        });
+        if (anonUploadErr) {
+          // Non-fatal — anon row capture is analytics, not the user-
+          // facing response. Most likely cause is SUPABASE_SECRET_KEY
+          // being unset in dev; the admin client throws on construct
+          // in that case and we're caught by the outer try.
+          console.error('Anonymous resume_uploads insert failed:', anonUploadErr);
+        }
+      } catch (e) {
+        console.error('Anonymous resume_uploads write threw (non-fatal):', e);
+      }
     }
 
     // Word + token counts for the UI. These are computed from the
