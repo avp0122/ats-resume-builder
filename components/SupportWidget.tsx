@@ -15,31 +15,26 @@ interface SessionEcho {
  * Floating support button (bottom-right). Click opens a popup with
  * subject / contact email / phone / message. Visible site-wide.
  *
- * The signed-in user's email is auto-filled when available — we fetch it
- * from /api/usage which already returns identity + plan info.
+ * Title, email, and message are required; phone is optional. Signed-in
+ * visitors get their account email prefilled into the field but the
+ * input is still shown — so they can override the reply-to address if
+ * they want (e.g. to use a work email for a billing question).
  */
 export default function SupportWidget() {
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState<SessionEcho>({ signedInEmail: null });
 
-  // Light identity fetch so we can prefill / hide the email input. We
-  // piggyback on /api/usage because adding a dedicated /me endpoint just
-  // for an email is overkill.
+  // Light identity fetch so we can prefill the email input. We piggyback
+  // on /api/usage because that endpoint already exists and we don't want
+  // a dedicated /me endpoint just for an email string.
   useEffect(() => {
     let cancelled = false;
     fetch('/api/usage', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data) return;
-        // /api/usage exposes signedIn (boolean) and a profile-derived
-        // shape but not email directly. Email comes from /api/support's
-        // server-side check anyway; we only need a hint here, so we use
-        // `signedIn` to decide whether to render the email field.
-        if (data.signedIn) {
-          // Best-effort: a second tiny request to /api/me would be cleaner
-          // but is overkill. Mark email as "known on server" with a
-          // placeholder so the input is omitted from the form.
-          setSession({ signedInEmail: 'on-file' });
+        if (data.signedIn && typeof data.email === 'string') {
+          setSession({ signedInEmail: data.email });
         }
       })
       .catch(() => {
@@ -100,7 +95,10 @@ function SupportPopup({
   session: SessionEcho;
 }) {
   const [subject, setSubject] = useState('');
-  const [email, setEmail] = useState('');
+  // Prefill with the signed-in user's account email when we know it.
+  // The field is still editable so a signed-in user can override the
+  // reply-to address (e.g. work email for a billing ticket).
+  const [email, setEmail] = useState(session.signedInEmail || '');
   const [phone, setPhone] = useState('');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -113,11 +111,9 @@ function SupportPopup({
     subjectRef.current?.focus();
   }, []);
 
-  // Email is required for anonymous users (we have no other way to reach
-  // them). Signed-in users have their auth email on the server, so the
-  // input is hidden in that case and this check trivially passes.
+  // Email is required for all senders. Signed-in users have it prefilled.
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const emailOk = !!session.signedInEmail || EMAIL_RE.test(email.trim());
+  const emailOk = EMAIL_RE.test(email.trim());
   const canSubmit =
     subject.trim().length >= MIN_SUBJECT &&
     subject.trim().length <= MAX_SUBJECT &&
@@ -203,11 +199,9 @@ function SupportPopup({
                   {success.ticketId.slice(0, 8)}
                 </span>{' '}
                 received.{' '}
-                {session.signedInEmail
-                  ? "We'll reply to your account email."
-                  : email.trim()
+                {email.trim()
                   ? `We'll reply to ${email.trim()}.`
-                  : "Leave an email next time if you'd like a reply."}
+                  : "We'll be in touch."}
               </p>
               <button
                 type="button"
@@ -228,15 +222,20 @@ function SupportPopup({
                 required
                 inputRef={subjectRef}
               />
-              {!session.signedInEmail && (
-                <Field
-                  label="Email"
-                  value={email}
-                  onChange={setEmail}
-                  type="email"
-                  placeholder="you@example.com"
-                  required
-                />
+              <Field
+                label="Email"
+                value={email}
+                onChange={setEmail}
+                type="email"
+                placeholder="you@example.com"
+                required
+              />
+              {session.signedInEmail && session.signedInEmail !== email.trim() && (
+                <p className="-mt-2 text-[10px] text-white/40 leading-snug">
+                  Different from your account email{' '}
+                  <span className="text-white/70">{session.signedInEmail}</span>. We&apos;ll
+                  reply to whatever you enter above.
+                </p>
               )}
               <Field
                 label="Phone"

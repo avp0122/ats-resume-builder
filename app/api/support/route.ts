@@ -94,10 +94,13 @@ export async function POST(request: NextRequest) {
     // Continue as anonymous.
   }
 
-  // Email is required for anonymous senders — without one we have no way
-  // to reply. Signed-in users supply theirs implicitly via auth so the
-  // form doesn't even render the field for them.
-  const resolvedEmail = userEmail || providedEmail || null;
+  // Email is required for ALL senders now — the popup always renders the
+  // field. Prefer the value the user typed (they may want to override
+  // the reply-to for this ticket; e.g. signed in on personal, asking a
+  // billing question with their work email) and fall back to the auth
+  // email so we still capture something on broken clients that drop the
+  // field.
+  const resolvedEmail = providedEmail || userEmail || null;
   if (!resolvedEmail) {
     return NextResponse.json(
       { error: 'Email is required so we can reply.' },
