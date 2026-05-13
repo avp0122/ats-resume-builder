@@ -113,7 +113,13 @@ body::before {
   background: rgba(16, 185, 129, 0.08);
 }
 
-/* Animated gradient text helper */
+/* Animated gradient text helper.
+ *
+ * `line-height: 1.15` + a hair of bottom padding stops descender
+ * clipping (the "p" in "Simple/transparent/pricing", the "g" in "Land
+ * the interview", etc). With `bg-clip-text`, the gradient mask covers
+ * the glyph cap-to-baseline region but excludes the descender area
+ * unless the line-box is given extra vertical room. */
 .gradient-text {
   background: linear-gradient(90deg, #fcd34d, #f0abfc, #67e8f9, #fcd34d);
   background-size: 300% 100%;
@@ -121,6 +127,8 @@ body::before {
   background-clip: text;
   color: transparent;
   animation: shimmer 6s linear infinite;
+  line-height: 1.15;
+  padding-bottom: 0.1em;
 }
 @keyframes shimmer {
   0% { background-position: 0% 50%; }

@@ -121,7 +121,7 @@ function CheckoutInner() {
   return (
     <main className="max-w-2xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
       <header className="text-center mb-10">
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight bg-gradient-to-r from-amber-200 via-fuchsia-300 to-sky-200 bg-clip-text text-transparent">
+        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight leading-[1.15] pb-1 bg-gradient-to-r from-amber-200 via-fuchsia-300 to-sky-200 bg-clip-text text-transparent">
           Pay with crypto
         </h1>
         <p className="mt-2 text-white/60 text-sm">
