@@ -3,6 +3,7 @@ import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { parseUserAgent } from '@/lib/userAgent';
 import { clientIpFromHeaders, lookupGeoIp } from '@/lib/geoip';
+import { readAnonId, clearAnonId } from '@/lib/anonId';
 
 // Public site URL used in confirmation emails. Falls back to the request
 // origin so previews on Vercel preview URLs still work, then to the prod
@@ -92,6 +93,25 @@ export async function POST(request: NextRequest) {
         .upsert(patch, { onConflict: 'id' });
       if (upsertErr) {
         console.error('Signup metadata upsert failed (non-fatal):', upsertErr);
+      }
+
+      // Claim any pre-signup resume_uploads rows the visitor accumulated
+      // under their anon_id. After this UPDATE the rows are owned by the
+      // new account (user_id set, anon_id null) and pass the
+      // resume_uploads_owner_set check constraint cleanly. We clear the
+      // anon_id cookie so a future sign-out → anonymous-use round trip
+      // starts a fresh visitor record instead of re-claiming the same
+      // rows.
+      const anonId = readAnonId();
+      if (anonId) {
+        const { error: claimErr } = await admin
+          .from('resume_uploads')
+          .update({ user_id: userId, anon_id: null })
+          .eq('anon_id', anonId);
+        if (claimErr) {
+          console.error('Anon upload claim failed (non-fatal):', claimErr);
+        }
+        clearAnonId();
       }
     } catch (e) {
       console.error('Signup metadata write threw (non-fatal):', e);
