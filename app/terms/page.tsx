@@ -39,7 +39,7 @@ export default function TermsPage() {
 
         <Section title="5. Payments">
           <p>
-            Paid plans are charged once via cryptocurrency (USDT BEP-20 on Binance Smart Chain). Payments are non-refundable except where
+            Paid plans are charged in cryptocurrency (USDT BEP-20 on Binance Smart Chain or USDT ERC-20 on Ethereum). Payments are non-refundable except where
             required by law. You are responsible for paying any applicable taxes.
           </p>
         </Section>

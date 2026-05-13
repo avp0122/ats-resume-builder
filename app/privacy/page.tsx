@@ -40,7 +40,7 @@ export default function PrivacyPage() {
         <Section title="4. Third parties">
           <p>
             We use Groq (LLM provider) to generate content, Supabase to host the database and authentication, and
-            BscScan to verify cryptocurrency transactions on Binance Smart Chain. These providers have their own privacy policies.
+            Etherscan (BscScan + Etherscan, unified V2 API) to verify USDT transactions on Binance Smart Chain (BEP-20) and Ethereum (ERC-20). These providers have their own privacy policies.
           </p>
         </Section>
 

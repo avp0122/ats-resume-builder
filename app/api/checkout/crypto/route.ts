@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
-import { getPlan, PlanId } from '@/lib/pricing';
+import {
+  CHAIN_LABEL,
+  coerceBillingPeriod,
+  coerceChain,
+  getProTier,
+  PlanId,
+} from '@/lib/pricing';
 import { getOwnerAddress, isValidEvmAddress } from '@/lib/crypto';
 
 /**
  * Create a crypto invoice. Returns an order code + recipient address + amount.
- * The user pays from their own wallet then submits the TX hash to /api/checkout/verify.
+ * The user pays from their own wallet then submits the TX hash to
+ * /api/checkout/verify. The chosen tier + chain is echoed back so the
+ * checkout page can render the correct network instructions.
  */
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured()) {
@@ -20,16 +28,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Sign in required.' }, { status: 401 });
   }
 
-  const { plan } = (await request.json()) as { plan?: PlanId };
-  if (!plan || plan === 'free') {
+  const body = (await request.json()) as {
+    plan?: PlanId;
+    period?: string;
+    chain?: string;
+  };
+  if (!body.plan || body.plan === 'free') {
     return NextResponse.json({ error: 'Invalid plan.' }, { status: 400 });
   }
-  const planDef = getPlan(plan);
+  const period = coerceBillingPeriod(body.period);
+  const chain = coerceChain(body.chain);
+  const tier = getProTier(period);
 
-  const address = getOwnerAddress('USDT_BEP20');
+  const address = getOwnerAddress(chain);
   if (!address) {
     return NextResponse.json(
-      { error: 'Crypto payments not configured. Owner address missing.' },
+      {
+        error: `Crypto payments not configured for ${chain}. Owner address missing.`,
+      },
       { status: 503 }
     );
   }
@@ -37,7 +53,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'Crypto receive address is misconfigured. OWNER_USDT_BEP20_ADDRESS must be a 0x-prefixed 40-character hex address.',
+          'Crypto receive address is misconfigured. Owner address must be a 0x-prefixed 40-character hex address.',
       },
       { status: 503 }
     );
@@ -46,14 +62,17 @@ export async function POST(request: NextRequest) {
   const orderCode = randomBytes(3).toString('hex').toUpperCase(); // 6 hex chars
 
   return NextResponse.json({
-    chain: 'USDT_BEP20',
-    chainLabel: 'USDT (BEP-20 / BSC)',
+    chain,
+    chainLabel: CHAIN_LABEL[chain],
     address,
-    amount: planDef.priceUSD,
+    amount: tier.priceUSD,
     currency: 'USDT',
     orderCode,
-    plan: planDef.id,
-    notes:
-      'Send the EXACT amount on Binance Smart Chain (BEP-20) only. Other networks will not be detected. After paying, paste the transaction hash to confirm.',
+    plan: 'pro' as PlanId,
+    period,
+    periodLabel: tier.label,
+    periodDays: tier.periodDays,
+    savingsPct: tier.savingsPct,
+    notes: `Send the EXACT amount on ${CHAIN_LABEL[chain]} only. Other networks will not be detected. After paying, paste the transaction hash to confirm.`,
   });
 }
