@@ -319,46 +319,55 @@ export async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
 }
 
 /**
- * Lazy-load pdfjs-dist via a bundler-defeating `eval('require')`.
+ * Lazy-load pdfjs-dist via a LITERAL require() so Vercel's file tracer
+ * (nft) can see the dependency and ship it inside /var/task/node_modules.
  *
- * Why eval: previous attempts used `await import('pdfjs-dist/legacy/build/pdf.mjs')`
- * directly, which Next/Webpack tries to statically resolve at build
- * time. With `serverComponentsExternalPackages` set in next.config.js
- * the runtime require() finds the package fine, but static analysis
- * on multiple candidate paths (.mjs / .js / bare) was causing the
- * Vercel build to hang at "Creating an optimized production build".
+ * History:
+ *   • Original code used `await import('pdfjs-dist/legacy/build/pdf.mjs')`.
+ *     That worked locally but failed on Vercel — the file showed up
+ *     differently in the bundled lambda.
+ *   • Next attempt used `eval('require')` to defeat webpack's static
+ *     resolution. That fixed the build hang but ALSO defeated nft, so
+ *     pdfjs-dist was stripped from /var/task/node_modules entirely.
+ *     Symptom: "Cannot find module 'pdfjs-dist'" at runtime.
+ *   • This version uses a LITERAL `require()` inside a function. nft
+ *     scans compiled output for require() calls with string literals
+ *     and ships the matching packages; webpack leaves it alone because
+ *     `serverComponentsExternalPackages` declares pdfjs-dist external.
+ *     Lazy (inside function) so cold-start isn't slowed.
  *
- * `eval('require')` returns Node's real require at runtime in a CJS
- * module (which is what Next compiles route handlers to). The bundler
- * can't see through the eval, so no static resolution happens.
- *
- * We try the CJS legacy build first — Node's require() can't load ESM
- * via .mjs, so .js is the actual working path.
+ * .js (CJS) path first — Node's CJS require() can't load .mjs (ESM).
  */
 function loadPdfjs(): any {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const dynamicRequire: NodeRequire = eval('require');
-  const candidates = [
-    'pdfjs-dist/legacy/build/pdf.js',
-    'pdfjs-dist',
-  ];
   const errors: string[] = [];
-  for (const path of candidates) {
-    try {
-      const mod: any = dynamicRequire(path);
-      // Some entry points export the API on `default`, some on the
-      // namespace object. Normalise.
-      const api =
-        mod?.default && typeof mod.default.getDocument === 'function'
-          ? mod.default
-          : mod;
-      if (api && typeof api.getDocument === 'function') {
-        return api;
-      }
-      errors.push(`${path}: loaded but no getDocument export`);
-    } catch (e) {
-      errors.push(`${path}: ${e instanceof Error ? e.message : String(e)}`);
-    }
+  // Each require() is a separate try/catch in its own block. We don't
+  // loop over an array because nft only follows STRING-LITERAL require
+  // arguments — a require(variable) is invisible to the tracer.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('pdfjs-dist/legacy/build/pdf.js') as any;
+    const api =
+      mod?.default && typeof mod.default.getDocument === 'function'
+        ? mod.default
+        : mod;
+    if (api && typeof api.getDocument === 'function') return api;
+    errors.push('pdfjs-dist/legacy/build/pdf.js: loaded but no getDocument');
+  } catch (e) {
+    errors.push(
+      `pdfjs-dist/legacy/build/pdf.js: ${e instanceof Error ? e.message : String(e)}`
+    );
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('pdfjs-dist') as any;
+    const api =
+      mod?.default && typeof mod.default.getDocument === 'function'
+        ? mod.default
+        : mod;
+    if (api && typeof api.getDocument === 'function') return api;
+    errors.push('pdfjs-dist: loaded but no getDocument');
+  } catch (e) {
+    errors.push(`pdfjs-dist: ${e instanceof Error ? e.message : String(e)}`);
   }
   throw new Error(
     `Could not load pdfjs-dist via any entry point. Tried:\n - ${errors.join('\n - ')}`

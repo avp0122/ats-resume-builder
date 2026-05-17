@@ -1,16 +1,26 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Treat the PDF extractors as external on the server. Without this,
-  // Next.js tries to bundle pdfjs-dist into the serverless lambda and
-  // its dynamic-import paths (legacy/build/pdf.mjs, etc.) sometimes
-  // resolve to a stub that throws at runtime — the symptom we saw on
-  // Vercel was "could not extract text" with zero diagnostics. Same
-  // for pdfreader and mammoth (DOCX) for the same reason.
-  // Next 14 uses experimental.serverComponentsExternalPackages;
-  // renamed to top-level `serverExternalPackages` in Next 15.
   experimental: {
+    // Don't bundle these — they have native-ish dependencies and runtime
+    // file resolution that Webpack can't reliably reproduce. Tell Next
+    // to leave the require() calls alone and resolve them via Node's
+    // normal module resolution at runtime in the lambda.
     serverComponentsExternalPackages: ['pdfjs-dist', 'pdfreader', 'mammoth'],
+    // BELT AND BRACES: explicitly tell Vercel's file tracer (nft) to
+    // ship the pdfjs-dist package files inside the lambda's
+    // /var/task/node_modules. Without this, nft strips packages it
+    // can't see being statically imported — and our pdfjs require()
+    // is INSIDE a function (lazy), which nft sometimes misses. Same
+    // for pdfreader and mammoth's vendor files (they have a "vendor"
+    // dir of binary-ish JS that nft doesn't trace by default).
+    outputFileTracingIncludes: {
+      '/api/generate': [
+        './node_modules/pdfjs-dist/**',
+        './node_modules/pdfreader/**',
+        './node_modules/mammoth/**',
+      ],
+    },
   },
   async rewrites() {
     return [];
