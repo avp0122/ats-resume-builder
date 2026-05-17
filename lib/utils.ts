@@ -263,32 +263,30 @@ export function validateInputs(jd: string, resume: string): { valid: boolean; er
  * Extract text from PDF file buffer.
  *
  * Two extractors are tried in order:
- *   Primary: pdfjs-dist (Mozilla's renderer). Robust across multi-
- *     column layouts and the export quirks of resume builders like
- *     Cake Resume, Canva, Novoresume — pdfreader silently returns
- *     empty text for several of those.
- *   Fallback: pdfreader, retained for the small set of PDFs where
- *     pdfjs stumbles (rare custom CMap encodings).
+ *   Primary: pdf-parse (uses pdfjs 1.10.x internally, no worker).
+ *     Reliable across multi-column layouts and the export quirks
+ *     of resume builders like Cake Resume / Canva / Novoresume.
+ *   Fallback: pdfreader. Kept because it's already in the bundle
+ *     and occasionally succeeds where pdf-parse stumbles.
  *
- * Logging is deliberately not gated on NODE_ENV because the original
+ * Logging is deliberately not gated on NODE_ENV — the original
  * symptom was Vercel returning "could not extract text" with zero
- * diagnostics — we want both attempts' results visible in production
- * logs so a future regression is debuggable.
+ * diagnostics, so we always log both attempts' outcomes.
  */
 export async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
   let primary = '';
   let primaryError: unknown = null;
   try {
-    primary = await extractTextWithPdfJs(buffer);
+    primary = await extractTextWithPdfParse(buffer);
   } catch (err) {
     primaryError = err;
     console.warn(
-      'pdfjs-dist extraction failed:',
+      'pdf-parse extraction failed:',
       err instanceof Error ? err.message : err
     );
   }
   if (primary && primary.trim().length >= 20) {
-    console.log(`pdfjs-dist extracted ${primary.length} chars from PDF.`);
+    console.log(`pdf-parse extracted ${primary.length} chars from PDF.`);
     return primary.trim();
   }
 
@@ -305,13 +303,13 @@ export async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
   }
   if (fallback && fallback.trim().length >= 20) {
     console.log(
-      `pdfreader extracted ${fallback.length} chars from PDF (pdfjs gave ${primary.length}).`
+      `pdfreader extracted ${fallback.length} chars from PDF (pdf-parse gave ${primary.length}).`
     );
     return fallback.trim();
   }
 
   console.error(
-    `Both PDF extractors yielded too little text (pdfjs: ${primary.length} chars, pdfreader: ${fallback.length} chars). Primary err: ${primaryError ? String(primaryError) : 'none'}; fallback err: ${fallbackError ? String(fallbackError) : 'none'}`
+    `Both PDF extractors yielded too little text (pdf-parse: ${primary.length} chars, pdfreader: ${fallback.length} chars). Primary err: ${primaryError ? String(primaryError) : 'none'}; fallback err: ${fallbackError ? String(fallbackError) : 'none'}`
   );
   // Return whatever non-empty content either produced; the caller will
   // surface the user-facing "could not extract" error if it's truly empty.
@@ -319,57 +317,40 @@ export async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
 }
 
 /**
- * Lazy-load pdfjs-dist via a dynamic `import()`. Webpack inlines the
- * package into the route's lambda bundle, so there's no
- * /var/task/node_modules lookup at runtime — earlier attempts to keep
- * pdfjs-dist external (via serverComponentsExternalPackages) failed
- * on Vercel because the file tracer kept stripping the package files.
- * The webpack `canvas: false` alias in next.config.js handles the
- * only known incompatibility (pdfjs's optional Node-raster dep).
+ * Extract text with pdf-parse — a thin wrapper around an older
+ * pdfjs-dist (1.10.x) that has no worker dependency and works
+ * cleanly in Node / serverless environments.
  *
- * .mjs is the documented entry point. The `default` interop matters
- * because ES-modules wrap the namespace in `default` when imported
- * dynamically.
+ * We tried pdfjs-dist 4.x directly (the primary extractor for
+ * several PR iterations) but it always tries to spawn a worker via
+ * `await import('./pdf.worker.mjs')`, and webpack on Vercel didn't
+ * emit the worker file alongside the bundled main module. The
+ * error was: "Setting up fake worker failed: Cannot find module
+ * '/var/task/.next/server/chunks/pdf.worker.mjs'". pdf-parse
+ * sidesteps this entirely — its bundled pdfjs is the worker-free
+ * 1.10 vintage.
+ *
+ * Import quirk: pdf-parse's index.js does a side-effect read of a
+ * test PDF from disk at import time (it's debug code). The test
+ * PDF isn't in /var/task on Vercel, so requiring the package
+ * top-level throws ENOENT. Importing from `pdf-parse/lib/pdf-parse.js`
+ * directly bypasses index.js and avoids the read.
  */
-async function loadPdfjs(): Promise<any> {
-  const mod = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const api: any =
-    (mod as any).default && typeof (mod as any).default.getDocument === 'function'
-      ? (mod as any).default
-      : (mod as any);
-  if (!api || typeof api.getDocument !== 'function') {
-    throw new Error(
-      'pdfjs-dist loaded but the getDocument export is missing — package may be corrupt.'
-    );
-  }
-  return api;
-}
+type PdfParseResult = {
+  text: string;
+  numpages: number;
+  info: Record<string, unknown>;
+};
+type PdfParseFn = (
+  data: Buffer,
+  options?: { max?: number; version?: string }
+) => Promise<PdfParseResult>;
 
-async function extractTextWithPdfJs(buffer: ArrayBuffer): Promise<string> {
-  const pdfjs = await loadPdfjs();
-  // Disable the worker so pdfjs runs in-process — workers don't exist
-  // on Vercel serverless runtimes.
-  const loadingTask = pdfjs.getDocument({
-    data: new Uint8Array(buffer),
-    disableWorker: true,
-    isEvalSupported: false,
-    useSystemFonts: true,
-    // Suppress pdfjs's verbose CMap/font warnings on stdout. They're
-    // noise for our purposes — we either get text out or we don't.
-    verbosity: 0,
-  });
-  const pdf = await loadingTask.promise;
-  const pages: string[] = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    const pageText = (content.items as Array<any>)
-      .map((it) => (typeof it?.str === 'string' ? it.str : ''))
-      .filter((s) => s.length > 0)
-      .join(' ');
-    pages.push(pageText);
-  }
-  return pages.join('\n');
+async function extractTextWithPdfParse(buffer: ArrayBuffer): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pdfParse = require('pdf-parse/lib/pdf-parse.js') as PdfParseFn;
+  const result = await pdfParse(Buffer.from(buffer));
+  return (result.text || '').trim();
 }
 
 function extractTextWithPdfReader(buffer: ArrayBuffer): Promise<string> {
