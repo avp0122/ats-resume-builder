@@ -93,7 +93,12 @@ export default function Home() {
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
+  // Drag-and-drop UI feedback. `dragDepth` counts nested dragenter
+  // events so child elements inside the drop zone don't flicker the
+  // "is-dragging" state to false on every internal traverse.
+  const [dragDepth, setDragDepth] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const isDragging = dragDepth > 0;
 
   useEffect(() => {
     setHydrated(true);
@@ -109,24 +114,49 @@ export default function Home() {
       });
   }, []);
 
+  // Single accept path used by both the <input type="file"> change
+  // listener and the drag-and-drop drop handler. Centralising the rules
+  // here means click-to-select and drag-drop reject the same files for
+  // the same reasons (extension + size).
+  const acceptResumeFile = useCallback((file: File | null) => {
+    if (!file) {
+      setFormState((prev) => ({ ...prev, resume: null }));
+      return;
+    }
+    // Extension check — some browsers report empty MIME for .docx so we
+    // fall back to the filename. Matches the `accept=".pdf,.docx"`
+    // attribute on the file input.
+    const name = file.name.toLowerCase();
+    const looksLikeResume =
+      name.endsWith('.pdf') ||
+      name.endsWith('.docx') ||
+      file.type === 'application/pdf' ||
+      file.type ===
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (!looksLikeResume) {
+      setError('Resume must be a PDF or DOCX file.');
+      setFormState((prev) => ({ ...prev, resume: null }));
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Resume file is too large. Maximum size is 10MB.');
+      setFormState((prev) => ({ ...prev, resume: null }));
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    setFormState((prev) => ({ ...prev, resume: file }));
+    setError(null);
+  }, []);
+
   useEffect(() => {
     if (!hydrated) return;
     const input = fileInputRef.current;
     if (!input) return;
-    const onChange = () => {
-      const file = input.files?.[0] || null;
-      if (file && file.size > 10 * 1024 * 1024) {
-        setError('Resume file is too large. Maximum size is 10MB.');
-        setFormState((prev) => ({ ...prev, resume: null }));
-        input.value = '';
-        return;
-      }
-      setFormState((prev) => ({ ...prev, resume: file }));
-      setError(null);
-    };
+    const onChange = () => acceptResumeFile(input.files?.[0] || null);
     input.addEventListener('change', onChange);
     return () => input.removeEventListener('change', onChange);
-  }, [hydrated]);
+  }, [hydrated, acceptResumeFile]);
 
   const handleInputChange = (field: keyof FormState, value: string | File | null) => {
     setFormState((prev) => ({ ...prev, [field]: value }));
@@ -233,17 +263,16 @@ export default function Home() {
 
   const jdTrimmed = formState.jd.trim();
   const jdWordCount = jdTrimmed ? jdTrimmed.split(/\s+/).length : 0;
-  // ~4 characters per token — the same heuristic the server uses for its
-  // Groq free-tier budget check, so the on-screen number matches what the
-  // backend will actually compare against.
-  const jdTokenCount = jdTrimmed ? Math.ceil(jdTrimmed.length / 4) : 0;
-  // Free-tier soft caps that mirror lib/llm.ts. Users see them as guidance
-  // BEFORE submitting so they don't get a server-side reject.
-  // Mirror lib/llm.ts: TPM 8000 − 800 safety − 2500 output = 4700 input.
-  // Inputs are auto-truncated server-side, but we still warn the user
-  // when the JD alone is approaching the per-input cap (1800 tokens).
-  const TOKEN_BUDGET = 4700;
-  const JD_TOKEN_SOFT_CAP = 1800;
+  // chars/3 mirrors lib/utils.ts estimateTokens. Pessimistic vs.
+  // chars/4 because Groq's actual tokenizer disagrees more on
+  // URL-heavy / code-heavy text than chars/4 suggests.
+  const jdTokenCount = jdTrimmed ? Math.ceil(jdTrimmed.length / 3) : 0;
+  // Free-tier soft caps mirror lib/llm.ts (TPM 8000 − 1200 safety −
+  // 2500 output = 4300 input) and the per-input JD cap in
+  // /api/generate (1500). Server auto-truncates anyway, but we warn
+  // the user before they submit so they can trim if they want.
+  const TOKEN_BUDGET = 4300;
+  const JD_TOKEN_SOFT_CAP = 1500;
   const overBudget = jdTokenCount > JD_TOKEN_SOFT_CAP;
   // Signed-in free user who has used all 3 generations — Generate is gated.
   const quotaExhausted =
@@ -437,7 +466,10 @@ export default function Home() {
                 )}
               </div>
 
-              {/* File upload */}
+              {/* File upload — click OR drag & drop. The whole label is a
+                  drop zone; we count nested dragenter events so child
+                  elements inside don't flicker the highlight off as the
+                  pointer moves over them. */}
               <div>
                 <label htmlFor="resume" className="block text-sm font-semibold text-white mb-2">
                   Your resume
@@ -446,14 +478,55 @@ export default function Home() {
                   htmlFor="resume"
                   aria-disabled={!hydrated}
                   className={`file-drop ${formState.resume ? 'has-file' : ''} ${
+                    isDragging ? 'is-dragging' : ''
+                  } ${
                     hydrated ? 'cursor-pointer' : 'cursor-wait opacity-60'
-                  } flex flex-col items-center justify-center text-center px-4 py-10 rounded-xl`}
+                  } flex flex-col items-center justify-center text-center px-4 py-10 rounded-xl transition`}
                   style={{ minHeight: '15rem' }}
                   onClick={(e) => {
                     if (!hydrated) e.preventDefault();
                   }}
+                  onDragEnter={(e) => {
+                    if (!hydrated) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragDepth((d) => d + 1);
+                  }}
+                  onDragOver={(e) => {
+                    if (!hydrated) return;
+                    // preventDefault is REQUIRED on dragover to indicate
+                    // that this element accepts drops — without it the
+                    // drop event never fires and the browser opens the
+                    // file in a new tab instead.
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'copy';
+                  }}
+                  onDragLeave={(e) => {
+                    if (!hydrated) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragDepth((d) => Math.max(0, d - 1));
+                  }}
+                  onDrop={(e) => {
+                    if (!hydrated) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragDepth(0);
+                    const file = e.dataTransfer.files?.[0] || null;
+                    acceptResumeFile(file);
+                  }}
                 >
-                  {formState.resume ? (
+                  {isDragging && !formState.resume ? (
+                    <>
+                      <svg className="w-10 h-10 text-fuchsia-300 mb-2 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M12 16V4m0 0l-4 4m4-4l4 4" strokeLinecap="round" strokeLinejoin="round" />
+                        <rect x="3" y="14" width="18" height="6" rx="2" />
+                      </svg>
+                      <p className="text-sm font-semibold text-fuchsia-200">Drop your resume to upload</p>
+                      <p className="text-xs text-white/50 mt-1">PDF or DOCX · max 10MB</p>
+                    </>
+                  ) : formState.resume ? (
                     <>
                       <svg className="w-10 h-10 text-emerald-400 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
                         <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
@@ -462,7 +535,7 @@ export default function Home() {
                       </svg>
                       <p className="text-sm font-medium text-emerald-200 break-all">{formState.resume.name}</p>
                       <p className="text-xs text-white/40 mt-1">
-                        {(formState.resume.size / 1024).toFixed(1)} KB · click to replace
+                        {(formState.resume.size / 1024).toFixed(1)} KB · click or drop to replace
                       </p>
                       <p className="text-[11px] text-white/40 mt-0.5">
                         Token count shown after generation
@@ -476,8 +549,13 @@ export default function Home() {
                         <path d="M12 3v12" strokeLinecap="round" />
                       </svg>
                       <p className="text-sm font-medium text-white">
-                        {hydrated ? 'Click to upload resume' : 'Loading…'}
+                        {hydrated ? 'Drag & drop your resume here' : 'Loading…'}
                       </p>
+                      {hydrated && (
+                        <p className="text-xs text-white/50 mt-1">
+                          or <span className="underline decoration-white/30">click to browse</span>
+                        </p>
+                      )}
                       <p className="text-xs text-white/40 mt-1">PDF or DOCX · max 10MB</p>
                     </>
                   )}
@@ -967,7 +1045,7 @@ function InputStatsCard({ stats }: { stats: InputStats }) {
   const totalTokens = stats.jdTokens + stats.resumeTokens;
   // Mirror the lib/llm.ts budget so the user sees the same number the
   // server uses to decide if a request fits.
-  const SOFT_CAP = 4700; // TPM 8000 − 800 safety − 2500 for output
+  const SOFT_CAP = 4300; // TPM 8000 − 1200 safety − 2500 for output
   const pct = Math.min(100, Math.round((totalTokens / SOFT_CAP) * 100));
   const exceeded = totalTokens > SOFT_CAP;
   return (
