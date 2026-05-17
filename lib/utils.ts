@@ -262,47 +262,111 @@ export function validateInputs(jd: string, resume: string): { valid: boolean; er
 /**
  * Extract text from PDF file buffer.
  *
- * Primary: pdfjs-dist (Mozilla's renderer). Robust across multi-column
- * layouts and the export quirks of resume builders like Cake Resume,
- * Canva, Novoresume — pdfreader silently returns empty text for several
- * of those.
+ * Two extractors are tried in order:
+ *   Primary: pdfjs-dist (Mozilla's renderer). Robust across multi-
+ *     column layouts and the export quirks of resume builders like
+ *     Cake Resume, Canva, Novoresume — pdfreader silently returns
+ *     empty text for several of those.
+ *   Fallback: pdfreader, retained for the small set of PDFs where
+ *     pdfjs stumbles (rare custom CMap encodings).
  *
- * Fallback: pdfreader, retained for the small set of PDFs where pdfjs
- * stumbles (rare custom CMap encodings).
+ * Logging is deliberately not gated on NODE_ENV because the original
+ * symptom was Vercel returning "could not extract text" with zero
+ * diagnostics — we want both attempts' results visible in production
+ * logs so a future regression is debuggable.
  */
 export async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
   let primary = '';
+  let primaryError: unknown = null;
   try {
     primary = await extractTextWithPdfJs(buffer);
   } catch (err) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn('pdfjs-dist extraction failed, falling back to pdfreader:', err);
+    primaryError = err;
+    console.warn(
+      'pdfjs-dist extraction failed:',
+      err instanceof Error ? err.message : err
+    );
+  }
+  if (primary && primary.trim().length >= 20) {
+    console.log(`pdfjs-dist extracted ${primary.length} chars from PDF.`);
+    return primary.trim();
+  }
+
+  let fallback = '';
+  let fallbackError: unknown = null;
+  try {
+    fallback = await extractTextWithPdfReader(buffer);
+  } catch (err) {
+    fallbackError = err;
+    console.warn(
+      'pdfreader extraction failed:',
+      err instanceof Error ? err.message : err
+    );
+  }
+  if (fallback && fallback.trim().length >= 20) {
+    console.log(
+      `pdfreader extracted ${fallback.length} chars from PDF (pdfjs gave ${primary.length}).`
+    );
+    return fallback.trim();
+  }
+
+  console.error(
+    `Both PDF extractors yielded too little text (pdfjs: ${primary.length} chars, pdfreader: ${fallback.length} chars). Primary err: ${primaryError ? String(primaryError) : 'none'}; fallback err: ${fallbackError ? String(fallbackError) : 'none'}`
+  );
+  // Return whatever non-empty content either produced; the caller will
+  // surface the user-facing "could not extract" error if it's truly empty.
+  return (primary.length >= fallback.length ? primary : fallback).trim();
+}
+
+/**
+ * Lazy-load pdfjs-dist trying several entry points. Why: on Vercel,
+ * Next.js bundling sometimes fails to resolve one specific suffix
+ * (.mjs / .js / bare module) depending on the runtime, and we'd
+ * rather try the next candidate than silently fall back to the
+ * empty-output pdfreader path. Each `import()` is in its own try so
+ * one bad path doesn't kill the chain.
+ */
+async function loadPdfjs(): Promise<any> {
+  const candidates: Array<[string, () => Promise<any>]> = [
+    ['legacy/build/pdf.mjs', () => import('pdfjs-dist/legacy/build/pdf.mjs')],
+    // @ts-expect-error — pdfjs-dist's package.json may or may not export
+    // these paths depending on version; we try and fall through.
+    ['legacy/build/pdf.js', () => import('pdfjs-dist/legacy/build/pdf.js')],
+    ['legacy/build/pdf', () => import('pdfjs-dist/legacy/build/pdf')],
+    ['pdfjs-dist (root)', () => import('pdfjs-dist')],
+  ];
+  const errors: string[] = [];
+  for (const [label, loader] of candidates) {
+    try {
+      const mod = await loader();
+      // Some entry points export the API on `default`, some on the
+      // namespace object. Normalise.
+      const api = (mod as any).default && typeof (mod as any).default.getDocument === 'function'
+        ? (mod as any).default
+        : mod;
+      if (api && typeof api.getDocument === 'function') {
+        return api;
+      }
+      errors.push(`${label}: loaded but no getDocument export`);
+    } catch (e) {
+      errors.push(`${label}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  if (primary && primary.trim().length >= 20) return primary.trim();
-
-  try {
-    const fallback = await extractTextWithPdfReader(buffer);
-    if (fallback && fallback.trim().length >= 20) return fallback.trim();
-    // Return whichever has more content if both are short.
-    return (primary.length >= fallback.length ? primary : fallback).trim();
-  } catch (err) {
-    if (primary) return primary.trim();
-    throw err;
-  }
+  throw new Error(`Could not load pdfjs-dist via any entry point. Tried:\n - ${errors.join('\n - ')}`);
 }
 
 async function extractTextWithPdfJs(buffer: ArrayBuffer): Promise<string> {
-  // The legacy build is the supported entry point for Node — the default
-  // ESM build assumes a browser worker that we don't have here.
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  // Disable the worker so pdfjs runs in-process. The worker entry path
-  // varies between Next dev/build and would otherwise need bundling.
-  const loadingTask = (pdfjs as any).getDocument({
+  const pdfjs = await loadPdfjs();
+  // Disable the worker so pdfjs runs in-process — workers don't exist
+  // on Vercel serverless runtimes.
+  const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buffer),
     disableWorker: true,
     isEvalSupported: false,
     useSystemFonts: true,
+    // Suppress pdfjs's verbose CMap/font warnings on stdout. They're
+    // noise for our purposes — we either get text out or we don't.
+    verbosity: 0,
   });
   const pdf = await loadingTask.promise;
   const pages: string[] = [];
