@@ -319,63 +319,34 @@ export async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
 }
 
 /**
- * Lazy-load pdfjs-dist via a LITERAL require() so Vercel's file tracer
- * (nft) can see the dependency and ship it inside /var/task/node_modules.
+ * Lazy-load pdfjs-dist via a dynamic `import()`. Webpack inlines the
+ * package into the route's lambda bundle, so there's no
+ * /var/task/node_modules lookup at runtime — earlier attempts to keep
+ * pdfjs-dist external (via serverComponentsExternalPackages) failed
+ * on Vercel because the file tracer kept stripping the package files.
+ * The webpack `canvas: false` alias in next.config.js handles the
+ * only known incompatibility (pdfjs's optional Node-raster dep).
  *
- * History:
- *   • Original code used `await import('pdfjs-dist/legacy/build/pdf.mjs')`.
- *     That worked locally but failed on Vercel — the file showed up
- *     differently in the bundled lambda.
- *   • Next attempt used `eval('require')` to defeat webpack's static
- *     resolution. That fixed the build hang but ALSO defeated nft, so
- *     pdfjs-dist was stripped from /var/task/node_modules entirely.
- *     Symptom: "Cannot find module 'pdfjs-dist'" at runtime.
- *   • This version uses a LITERAL `require()` inside a function. nft
- *     scans compiled output for require() calls with string literals
- *     and ships the matching packages; webpack leaves it alone because
- *     `serverComponentsExternalPackages` declares pdfjs-dist external.
- *     Lazy (inside function) so cold-start isn't slowed.
- *
- * .js (CJS) path first — Node's CJS require() can't load .mjs (ESM).
+ * .mjs is the documented entry point. The `default` interop matters
+ * because ES-modules wrap the namespace in `default` when imported
+ * dynamically.
  */
-function loadPdfjs(): any {
-  const errors: string[] = [];
-  // Each require() is a separate try/catch in its own block. We don't
-  // loop over an array because nft only follows STRING-LITERAL require
-  // arguments — a require(variable) is invisible to the tracer.
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('pdfjs-dist/legacy/build/pdf.js') as any;
-    const api =
-      mod?.default && typeof mod.default.getDocument === 'function'
-        ? mod.default
-        : mod;
-    if (api && typeof api.getDocument === 'function') return api;
-    errors.push('pdfjs-dist/legacy/build/pdf.js: loaded but no getDocument');
-  } catch (e) {
-    errors.push(
-      `pdfjs-dist/legacy/build/pdf.js: ${e instanceof Error ? e.message : String(e)}`
+async function loadPdfjs(): Promise<any> {
+  const mod = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const api: any =
+    (mod as any).default && typeof (mod as any).default.getDocument === 'function'
+      ? (mod as any).default
+      : (mod as any);
+  if (!api || typeof api.getDocument !== 'function') {
+    throw new Error(
+      'pdfjs-dist loaded but the getDocument export is missing — package may be corrupt.'
     );
   }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('pdfjs-dist') as any;
-    const api =
-      mod?.default && typeof mod.default.getDocument === 'function'
-        ? mod.default
-        : mod;
-    if (api && typeof api.getDocument === 'function') return api;
-    errors.push('pdfjs-dist: loaded but no getDocument');
-  } catch (e) {
-    errors.push(`pdfjs-dist: ${e instanceof Error ? e.message : String(e)}`);
-  }
-  throw new Error(
-    `Could not load pdfjs-dist via any entry point. Tried:\n - ${errors.join('\n - ')}`
-  );
+  return api;
 }
 
 async function extractTextWithPdfJs(buffer: ArrayBuffer): Promise<string> {
-  const pdfjs = loadPdfjs();
+  const pdfjs = await loadPdfjs();
   // Disable the worker so pdfjs runs in-process — workers don't exist
   // on Vercel serverless runtimes.
   const loadingTask = pdfjs.getDocument({
