@@ -319,44 +319,54 @@ export async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
 }
 
 /**
- * Lazy-load pdfjs-dist trying several entry points. Why: on Vercel,
- * Next.js bundling sometimes fails to resolve one specific suffix
- * (.mjs / .js / bare module) depending on the runtime, and we'd
- * rather try the next candidate than silently fall back to the
- * empty-output pdfreader path. Each `import()` is in its own try so
- * one bad path doesn't kill the chain.
+ * Lazy-load pdfjs-dist via a bundler-defeating `eval('require')`.
+ *
+ * Why eval: previous attempts used `await import('pdfjs-dist/legacy/build/pdf.mjs')`
+ * directly, which Next/Webpack tries to statically resolve at build
+ * time. With `serverComponentsExternalPackages` set in next.config.js
+ * the runtime require() finds the package fine, but static analysis
+ * on multiple candidate paths (.mjs / .js / bare) was causing the
+ * Vercel build to hang at "Creating an optimized production build".
+ *
+ * `eval('require')` returns Node's real require at runtime in a CJS
+ * module (which is what Next compiles route handlers to). The bundler
+ * can't see through the eval, so no static resolution happens.
+ *
+ * We try the CJS legacy build first — Node's require() can't load ESM
+ * via .mjs, so .js is the actual working path.
  */
-async function loadPdfjs(): Promise<any> {
-  const candidates: Array<[string, () => Promise<any>]> = [
-    ['legacy/build/pdf.mjs', () => import('pdfjs-dist/legacy/build/pdf.mjs')],
-    // @ts-expect-error — pdfjs-dist's package.json may or may not export
-    // these paths depending on version; we try and fall through.
-    ['legacy/build/pdf.js', () => import('pdfjs-dist/legacy/build/pdf.js')],
-    ['legacy/build/pdf', () => import('pdfjs-dist/legacy/build/pdf')],
-    ['pdfjs-dist (root)', () => import('pdfjs-dist')],
+function loadPdfjs(): any {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const dynamicRequire: NodeRequire = eval('require');
+  const candidates = [
+    'pdfjs-dist/legacy/build/pdf.js',
+    'pdfjs-dist',
   ];
   const errors: string[] = [];
-  for (const [label, loader] of candidates) {
+  for (const path of candidates) {
     try {
-      const mod = await loader();
+      const mod: any = dynamicRequire(path);
       // Some entry points export the API on `default`, some on the
       // namespace object. Normalise.
-      const api = (mod as any).default && typeof (mod as any).default.getDocument === 'function'
-        ? (mod as any).default
-        : mod;
+      const api =
+        mod?.default && typeof mod.default.getDocument === 'function'
+          ? mod.default
+          : mod;
       if (api && typeof api.getDocument === 'function') {
         return api;
       }
-      errors.push(`${label}: loaded but no getDocument export`);
+      errors.push(`${path}: loaded but no getDocument export`);
     } catch (e) {
-      errors.push(`${label}: ${e instanceof Error ? e.message : String(e)}`);
+      errors.push(`${path}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  throw new Error(`Could not load pdfjs-dist via any entry point. Tried:\n - ${errors.join('\n - ')}`);
+  throw new Error(
+    `Could not load pdfjs-dist via any entry point. Tried:\n - ${errors.join('\n - ')}`
+  );
 }
 
 async function extractTextWithPdfJs(buffer: ArrayBuffer): Promise<string> {
-  const pdfjs = await loadPdfjs();
+  const pdfjs = loadPdfjs();
   // Disable the worker so pdfjs runs in-process — workers don't exist
   // on Vercel serverless runtimes.
   const loadingTask = pdfjs.getDocument({
