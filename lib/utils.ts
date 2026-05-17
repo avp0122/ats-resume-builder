@@ -152,8 +152,30 @@ export function compressText(text: string): string {
     // Drop very short artifact lines (single chars / bullets-only).
     if (line.length <= 1) continue;
 
+    // Drop common resume / JD boilerplate that adds tokens without
+    // signal. "References available upon request" lines, EEO statements,
+    // and recruiter contact footers are very common.
+    if (
+      /^references\s+(are\s+)?available(\s+upon\s+request)?\.?$/i.test(line) ||
+      /^(an\s+)?equal\s+opportunity\s+employer/i.test(line) ||
+      /^by\s+applying.{0,5}you\s+agree/i.test(line) ||
+      /^we\s+are\s+an\s+equal\s+opportunity\s+employer/i.test(line) ||
+      /^applicants?\s+must\s+be\s+authoriz?ed\s+to\s+work/i.test(line) ||
+      /^this\s+job\s+description\s+is/i.test(line)
+    ) {
+      continue;
+    }
+
     // Skip exact duplicate of previous line (repeated PDF headers/footers).
     if (line === lastLine) continue;
+
+    // Trim long URLs down to scheme://host so we keep the citation
+    // without paying for query strings. A typical 200-char share URL
+    // collapses to ~30 chars.
+    line = line.replace(
+      /https?:\/\/([^\s\/]+)\/[^\s)]+/g,
+      (_m, host: string) => `https://${host}`
+    );
 
     cleaned.push(line);
     lastLine = line;
@@ -165,11 +187,45 @@ export function compressText(text: string): string {
 }
 
 /**
- * Rough token estimate (chars/4) — close enough for budgeting against the
- * Groq free-tier TPM cap. We don't pull tiktoken just for this.
+ * Truncate `text` so it fits in `maxTokens` (via the estimateTokens
+ * heuristic). Prefers breaking at a paragraph or sentence boundary
+ * near the end of the budget so the result stays readable. Appends
+ * an ellipsis when we had to cut mid-stream.
+ *
+ * Used to enforce the per-input cap before the LLM call so users see
+ * an "input was trimmed" notice instead of Groq's raw rate-limit error.
+ */
+export function truncateToTokenBudget(text: string, maxTokens: number): string {
+  if (!text) return '';
+  // estimateTokens uses chars/3.5 (see below) so the inverse is chars/token.
+  const maxChars = Math.max(0, Math.floor(maxTokens * 3.5));
+  if (text.length <= maxChars) return text;
+  const slice = text.slice(0, maxChars);
+  // Look for a clean break point in the last 25% of the budget window —
+  // newline > sentence > comma. Avoids cutting a word.
+  const windowStart = Math.floor(maxChars * 0.75);
+  const candidates = [
+    slice.lastIndexOf('\n\n'),
+    slice.lastIndexOf('\n'),
+    slice.lastIndexOf('. '),
+    slice.lastIndexOf('! '),
+    slice.lastIndexOf('? '),
+  ];
+  const breakAt = Math.max(...candidates.filter((i) => i >= windowStart));
+  const trimmed = breakAt > 0 ? slice.slice(0, breakAt + 1).trim() : slice.trim();
+  return `${trimmed}\n…[truncated for token budget]`;
+}
+
+/**
+ * Token estimate. We use chars/3.5 (slightly pessimistic vs. the more
+ * common chars/4) because Groq's actual tokenizer counts URLs, numbers,
+ * and unusual capitalization as more tokens than a flat 1/4 ratio
+ * suggests. The error we were chasing — "Requested 8315, Limit 8000" —
+ * indicates real tokens ran ~10% above our previous estimate. Bumping
+ * the divisor down to 3.5 absorbs that slack without needing tiktoken.
  */
 export function estimateTokens(text: string): number {
-  return Math.ceil((text || '').length / 4);
+  return Math.ceil((text || '').length / 3.5);
 }
 
 /**

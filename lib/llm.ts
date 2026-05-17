@@ -283,8 +283,11 @@ export async function generateATSContent(
 
   // Fit within the Groq free-tier 8000 TPM ceiling: input + max_tokens <= 8000.
   // Reserve a safety margin so we don't trip the rate limiter on rounding.
+  // SAFETY_MARGIN was 300 — we saw a real-world breach ("Requested 8315,
+  // Limit 8000") with that setting, so it's bumped to 800 to absorb the
+  // gap between our char/3.5 estimate and Groq's actual tokenizer.
   const TPM_BUDGET = 8000;
-  const SAFETY_MARGIN = 300;
+  const SAFETY_MARGIN = 800;
   const MIN_OUTPUT = 2500; // Below this we cannot reliably fit a resume + cover letter.
   const MAX_OUTPUT = 5500; // Headroom we believe is enough for full output.
   const inputTokens = estimateTokens(prompt);

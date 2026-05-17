@@ -1,4 +1,9 @@
-export const metadata = { title: 'Terms & Conditions — kairesume' };
+export const metadata = {
+  title: 'Terms & conditions',
+  description:
+    'Terms of service for kairesume — acceptable use, AI-generated content disclaimer, crypto payment terms (USDT TRC-20 / ERC-20), and limitation of liability.',
+  alternates: { canonical: 'https://kairesume.fit/terms' },
+};
 
 export default function TermsPage() {
   return (
