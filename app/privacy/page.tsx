@@ -1,4 +1,9 @@
-export const metadata = { title: 'Privacy Policy — kairesume' };
+export const metadata = {
+  title: 'Privacy policy',
+  description:
+    'How kairesume handles uploaded resumes, job descriptions, account data, cookies, geo-IP at signup, and crypto payments. Resume content is processed in memory and discarded after the response.',
+  alternates: { canonical: 'https://kairesume.fit/privacy' },
+};
 
 export default function PrivacyPage() {
   return (

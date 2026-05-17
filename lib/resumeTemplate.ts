@@ -140,8 +140,16 @@ function displayUrl(url: string): string {
 }
 
 function styleResumeBody(html: string): string {
-  // page-break-inside:avoid keeps headings + bullets from splitting awkwardly
-  // across PDF pages.
+  // Page-break strategy:
+  //   - Headings (h2/h3): page-break-AFTER:avoid so a section title
+  //     never lands on the last line of a page with its content on
+  //     the next.
+  //   - Paragraphs (<p>): NO page-break-inside:avoid. Pre-fix this
+  //     pushed long summary paragraphs to page 2 whenever they
+  //     didn't fit cleanly below the header, leaving page 1 almost
+  //     empty. Paragraphs can split across pages.
+  //   - List items (<li>): page-break-inside:avoid kept — splitting a
+  //     bullet mid-sentence reads worse than letting it move whole.
   return html
     .replace(
       /<h2(\b[^>]*)>/g,
@@ -153,7 +161,7 @@ function styleResumeBody(html: string): string {
     )
     .replace(
       /<p(\b[^>]*)>/g,
-      `<p$1 style="margin:0 0 8px;color:#1e293b;line-height:1.55;page-break-inside:avoid;break-inside:avoid;">`
+      `<p$1 style="margin:0 0 8px;color:#1e293b;line-height:1.55;">`
     )
     .replace(
       /<ul(\b[^>]*)>/g,

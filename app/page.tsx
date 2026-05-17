@@ -180,7 +180,14 @@ export default function Home() {
         windowWidth: A4_CONTENT_WIDTH_PX,
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as any },
+      // `avoid-all` would inject page-break-inside:avoid on EVERY
+      // element, which causes html2pdf to push the entire first
+      // body block to page 2 whenever it doesn't fit cleanly below
+      // the header — producing a near-empty page 1 with just the
+      // contact info. Use only css + legacy so our targeted breaks
+      // in lib/resumeTemplate.ts (avoid orphan headings, avoid
+      // splitting bullets) are the only break hints.
+      pagebreak: { mode: ['css', 'legacy'] as any },
     };
 
     const { default: html2pdf } = await import('html2pdf.js');
@@ -232,7 +239,10 @@ export default function Home() {
   const jdTokenCount = jdTrimmed ? Math.ceil(jdTrimmed.length / 4) : 0;
   // Free-tier soft caps that mirror lib/llm.ts. Users see them as guidance
   // BEFORE submitting so they don't get a server-side reject.
-  const TOKEN_BUDGET = 5200; // ~TPM 8000 minus 300 safety minus 2500 output
+  // Mirror lib/llm.ts: TPM 8000 − 800 safety − 2500 output = 4700 input.
+  // Inputs are auto-truncated server-side, but we still warn the user
+  // when the JD alone is approaching the per-input cap (1800 tokens).
+  const TOKEN_BUDGET = 4700;
   const JD_TOKEN_SOFT_CAP = 1800;
   const overBudget = jdTokenCount > JD_TOKEN_SOFT_CAP;
   // Signed-in free user who has used all 3 generations — Generate is gated.
@@ -669,26 +679,50 @@ function SeoContent() {
   // built around the high-intent search terms: "free AI resume builder",
   // "cheapest AI resume builder", "ATS resume", "tailored cover letter",
   // "interview best match", "high scorer".
+  // Q/A phrasing is deliberately matchy to common search-engine and
+  // chat-engine queries ("is X free", "best ATS resume builder", "how
+  // long does X take") so AI answer engines can quote a single
+  // sentence-level answer directly.
   const faqs = [
     {
       q: 'Is kairesume really the cheapest AI resume builder?',
-      a: 'Yes. The free tier gives you a full AI-tailored, ATS-optimized resume and cover letter with zero signup. Pro is $4.99/month for unlimited generations — well below other AI resume builders.',
+      a: 'Yes. The free tier gives you an AI-tailored, ATS-optimized resume and cover letter with zero signup. Pro is $4.99/month for unlimited generations — and the 1-year plan drops the effective rate to $3.49/month (30% off).',
+    },
+    {
+      q: 'Is kairesume free?',
+      a: 'Yes. You get one free generation without signing up and three free generations per month after a free account is created. No card is required at any tier.',
     },
     {
       q: 'How does the ATS resume optimization work?',
-      a: 'We extract the key requirements from the job description, rewrite your resume to surface matching keywords and quantified achievements, and score the result against the role so you can see how high a match you are before applying.',
+      a: 'kairesume extracts the explicit requirements from the job description, rewrites the resume to surface matching keywords and quantified achievements, and scores the result against the role. Output is plain ATS-clean HTML — no tables, columns, graphics, headers, or footers.',
+    },
+    {
+      q: 'How long does generation take?',
+      a: 'Typically 5 to 15 seconds end-to-end, depending on the AI provider load. The result includes the rewritten resume, a tailored cover letter, an ATS score, and the matched + missing keyword breakdown.',
+    },
+    {
+      q: 'Will the AI invent skills I don’t have?',
+      a: 'No. The prompt explicitly forbids inventing experience that isn’t in your original resume. Important missing keywords are surfaced in a separate "missing" list so you know what to legitimately add over time.',
     },
     {
       q: 'Do I get a tailored cover letter too?',
-      a: 'Every generation produces both a tailored resume and a tailored cover letter aligned to the role — written to highlight the best-match skills the recruiter is looking for.',
+      a: 'Yes. Every generation produces both a tailored resume and a 3–4 paragraph cover letter aligned to the same job description and keyword set.',
     },
     {
-      q: 'How do I become the high scorer for a job?',
+      q: 'How do I become the high scorer for a specific job?',
       a: 'Paste the full job description, upload your latest resume, and let kairesume rewrite it. The match-score panel tells you which keywords were covered and which to add for an interview-best-match outcome.',
     },
     {
-      q: 'Can I use kairesume for free?',
-      a: 'Yes — you get one free generation as an anonymous visitor, three free generations per month after signing up, and unlimited generations on Pro.',
+      q: 'What file formats are supported?',
+      a: 'Upload PDF or DOCX (up to 10 MB). The output is downloaded as a ZIP containing two PDFs — fullname_resume.pdf and fullname_coverletter.pdf — with the target role and company embedded in the ZIP filename.',
+    },
+    {
+      q: 'How do I pay for Pro?',
+      a: 'Pay in USDT on Tron (TRC-20) or Ethereum (ERC-20). There is no card on file and no auto-renew — every renewal is a fresh on-chain payment, so you can cancel by simply not paying.',
+    },
+    {
+      q: 'Does kairesume store my resume?',
+      a: 'The raw resume file and the job description text are processed in memory by the AI provider and discarded after the response is returned. Only structured metadata (target role, target company, ATS score, contact fields parsed from the resume) is persisted in our database, attached to your account.',
     },
   ];
 
@@ -933,7 +967,7 @@ function InputStatsCard({ stats }: { stats: InputStats }) {
   const totalTokens = stats.jdTokens + stats.resumeTokens;
   // Mirror the lib/llm.ts budget so the user sees the same number the
   // server uses to decide if a request fits.
-  const SOFT_CAP = 5200; // TPM 8000 − 300 safety − 2500 for output
+  const SOFT_CAP = 4700; // TPM 8000 − 800 safety − 2500 for output
   const pct = Math.min(100, Math.round((totalTokens / SOFT_CAP) * 100));
   const exceeded = totalTokens > SOFT_CAP;
   return (
