@@ -81,16 +81,19 @@ export async function POST(request: NextRequest) {
     // ran ~10% below reality. estimateTokens is now chars/3.5 (more
     // pessimistic) and we still truncate as a belt + suspenders.
     //
-    // Per-input caps:
-    //   - JD: 1800 tokens — JDs are mostly keyword bait + boilerplate
+    // Per-input caps (tightened after a real-world "Requested 8524,
+    // Limit 8000" breach with the previous 1800/2500 caps):
+    //   - JD: 1500 tokens — JDs are mostly keyword bait + boilerplate
     //     past the requirements list. Truncating fluff is low-cost.
-    //   - Resume: 2500 tokens — the candidate's actual content;
-    //     trim last (and only when JD trimming wasn't enough).
+    //   - Resume: 2000 tokens — the candidate's actual content;
+    //     trimmed second (and harder) only when needed.
     //
-    // Together that's max 4300 input + ~400 prompt scaffold +
-    // 2500 output reservation + 800 safety = 8000.
-    const MAX_JD_TOKENS = 1800;
-    const MAX_RESUME_TOKENS = 2500;
+    // Together that's max 3500 input + ~400 prompt scaffold +
+    // 2500 output reservation + 1200 safety = ~7600 worst-case
+    // estimated. If Groq's real tokenizer still disagrees, lib/llm.ts
+    // catches the 413 and auto-shrinks once.
+    const MAX_JD_TOKENS = 1500;
+    const MAX_RESUME_TOKENS = 2000;
     const compressedResumeRaw = compressText(resumeText);
     const compressedJdRaw = compressText(jd);
     const compressedJd = truncateToTokenBudget(compressedJdRaw, MAX_JD_TOKENS);

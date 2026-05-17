@@ -112,6 +112,17 @@ body::before {
   border-color: rgba(52, 211, 153, 0.6);
   background: rgba(16, 185, 129, 0.08);
 }
+/* While the user is actively dragging a file over the zone, brighten
+ * the border + give a faint glow so it's obvious the drop will land
+ * here. Slight scale (1.01) is intentionally subtle — bigger pulls
+ * the surrounding form layout around and feels janky. */
+.file-drop.is-dragging {
+  border-style: solid;
+  border-color: rgba(217, 70, 239, 0.85);
+  background: rgba(217, 70, 239, 0.12);
+  box-shadow: 0 0 0 4px rgba(217, 70, 239, 0.15);
+  transform: scale(1.01);
+}
 
 /* Animated gradient text helper.
  *

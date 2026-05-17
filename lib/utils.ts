@@ -197,8 +197,8 @@ export function compressText(text: string): string {
  */
 export function truncateToTokenBudget(text: string, maxTokens: number): string {
   if (!text) return '';
-  // estimateTokens uses chars/3.5 (see below) so the inverse is chars/token.
-  const maxChars = Math.max(0, Math.floor(maxTokens * 3.5));
+  // estimateTokens uses chars/3 (see below) so the inverse is chars/token.
+  const maxChars = Math.max(0, Math.floor(maxTokens * 3));
   if (text.length <= maxChars) return text;
   const slice = text.slice(0, maxChars);
   // Look for a clean break point in the last 25% of the budget window —
@@ -225,7 +225,15 @@ export function truncateToTokenBudget(text: string, maxTokens: number): string {
  * the divisor down to 3.5 absorbs that slack without needing tiktoken.
  */
 export function estimateTokens(text: string): number {
-  return Math.ceil((text || '').length / 3.5);
+  // chars/3 is intentionally pessimistic. Real-world Groq breaches
+  // we've seen at this codepath:
+  //   • chars/4   → "Requested 8315, Limit 8000"
+  //   • chars/3.5 → "Requested 8524, Limit 8000"
+  // The gap is widest for inputs heavy in URLs / code / punctuation,
+  // which BPE tokenizers split aggressively. chars/3 catches those
+  // without needing tiktoken. lib/llm.ts has an auto-retry-on-413 as
+  // belt-and-braces for whatever this still misses.
+  return Math.ceil((text || '').length / 3);
 }
 
 /**
