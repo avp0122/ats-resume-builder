@@ -278,15 +278,77 @@ export async function generateATSContent(
 ): Promise<ATSGenerationResult> {
   // Import prompt function dynamically to avoid circular dependencies
   const { getATSPrompt } = await import('./prompts');
-  const { estimateTokens } = await import('./utils');
-  const prompt = getATSPrompt(jd, resume);
+  const { estimateTokens, truncateToTokenBudget } = await import('./utils');
 
-  // Fit within the Groq free-tier 8000 TPM ceiling: input + max_tokens <= 8000.
-  // Reserve a safety margin so we don't trip the rate limiter on rounding.
+  // Groq free-tier ceiling. Real-world breaches we've seen at this
+  // call site:
+  //   • Requested 8315 with SAFETY_MARGIN=300 + chars/4 estimator
+  //   • Requested 8524 with SAFETY_MARGIN=800 + chars/3.5 estimator
+  // The fundamental issue: estimateTokens (chars/N) under-counts when
+  // inputs contain URLs / code / unusual punctuation — Groq's actual
+  // tokenizer disagrees. Belt-and-braces fix:
+  //   1. SAFETY_MARGIN 800 → 1200
+  //   2. Per-input caps at the route layer dropped to 1500/2000 (was
+  //      1800/2500) — so total upstream commit can't exceed ~3900
+  //      estimated input tokens.
+  //   3. If Groq still returns 413, halve the inputs in-process and
+  //      retry once. The user gets a successful (slightly shorter)
+  //      generation instead of an error.
   const TPM_BUDGET = 8000;
-  const SAFETY_MARGIN = 300;
-  const MIN_OUTPUT = 2500; // Below this we cannot reliably fit a resume + cover letter.
-  const MAX_OUTPUT = 5500; // Headroom we believe is enough for full output.
+  const SAFETY_MARGIN = 1200;
+  const MIN_OUTPUT = 2500;
+  const MAX_OUTPUT = 5500;
+
+  // Attempt 1 with the inputs as given.
+  try {
+    return await callWithBudget(jd, resume, getATSPrompt, estimateTokens, {
+      TPM_BUDGET,
+      SAFETY_MARGIN,
+      MIN_OUTPUT,
+      MAX_OUTPUT,
+    });
+  } catch (e) {
+    const err = e as LLMError;
+    // Recovery: only retry-with-shrink when Groq explicitly returned a
+    // 413 (payload too large). Other errors (parse failures, 5xx,
+    // truncated responses) don't get a smaller-input retry because
+    // shrinking won't help them.
+    if (err.statusCode !== 413) throw err;
+    console.warn('Groq returned 413. Shrinking inputs 50% and retrying once.');
+    // Halve both inputs. Resume content is more valuable than JD fluff
+    // so we shrink JD harder (40% kept) than resume (60% kept).
+    const jdTokensNow = estimateTokens(jd);
+    const resumeTokensNow = estimateTokens(resume);
+    const jdShrunk = truncateToTokenBudget(jd, Math.floor(jdTokensNow * 0.4));
+    const resumeShrunk = truncateToTokenBudget(
+      resume,
+      Math.floor(resumeTokensNow * 0.6)
+    );
+    return callWithBudget(jdShrunk, resumeShrunk, getATSPrompt, estimateTokens, {
+      TPM_BUDGET,
+      SAFETY_MARGIN,
+      MIN_OUTPUT,
+      MAX_OUTPUT,
+    });
+  }
+}
+
+interface BudgetConfig {
+  TPM_BUDGET: number;
+  SAFETY_MARGIN: number;
+  MIN_OUTPUT: number;
+  MAX_OUTPUT: number;
+}
+
+async function callWithBudget(
+  jd: string,
+  resume: string,
+  getATSPrompt: (jd: string, resume: string) => string,
+  estimateTokens: (text: string) => number,
+  cfg: BudgetConfig
+): Promise<ATSGenerationResult> {
+  const { TPM_BUDGET, SAFETY_MARGIN, MIN_OUTPUT, MAX_OUTPUT } = cfg;
+  const prompt = getATSPrompt(jd, resume);
   const inputTokens = estimateTokens(prompt);
   const jdTokens = estimateTokens(jd);
   const resumeTokens = estimateTokens(resume);
@@ -296,8 +358,6 @@ export async function generateATSContent(
     Math.min(MAX_OUTPUT, TPM_BUDGET - SAFETY_MARGIN - inputTokens)
   );
   if (TPM_BUDGET - SAFETY_MARGIN - inputTokens < MIN_OUTPUT) {
-    // Show the user exactly WHERE the budget went — so they can decide
-    // whether to trim the JD, the resume, or both.
     const overBy = inputTokens - maxInputTokens;
     throw new Error(
       `Inputs too large for the free-tier rate limit. ` +
@@ -313,7 +373,6 @@ export async function generateATSContent(
   const maxRetries = 2;
   let lastError: Error | null = null;
 
-  // Try Groq first (primary provider)
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       console.log(`Attempting Groq API call (attempt ${attempt + 1})`);
@@ -323,8 +382,6 @@ export async function generateATSContent(
         throw new Error('Empty response from Groq API');
       }
 
-      // Detect server-side truncation explicitly so we surface a clear error
-      // instead of falling into "missing field" parsing failures.
       if (finishReason === 'length') {
         const err: LLMError = new Error(
           'The AI response exceeded the maximum length. Try a shorter resume or job description.'
@@ -336,18 +393,23 @@ export async function generateATSContent(
       return parseJSONResponse(content);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error('Unknown error');
-      
-      // Check if we should retry (429 rate limit or 5xx server errors)
+
+      // 413 (payload too large) is NOT retried here — bubble it up so
+      // the outer handler can shrink inputs and try once with the
+      // smaller payload. Retrying the SAME payload won't help.
       const llmError = error as LLMError;
-      const isRetryable = 
-        llmError.statusCode === 429 || 
+      if (llmError.statusCode === 413) {
+        throw llmError;
+      }
+
+      const isRetryable =
+        llmError.statusCode === 429 ||
         (llmError.statusCode && llmError.statusCode >= 500);
-      
+
       if (!isRetryable || attempt >= maxRetries) {
         break;
       }
-      
-      // Exponential backoff: 1s, 2s, 4s...
+
       const delay = Math.pow(2, attempt) * 1000;
       console.log(`Retrying in ${delay}ms due to: ${lastError.message}`);
       await sleep(delay);

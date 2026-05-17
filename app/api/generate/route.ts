@@ -7,6 +7,7 @@ import {
   extractTextFromFile,
   compressText,
   estimateTokens,
+  truncateToTokenBudget,
 } from '@/lib/utils';
 import { bumpAnonCount, readAnonCount, FREE_LIMIT } from '@/lib/usage';
 import { ensureAnonId } from '@/lib/anonId';
@@ -72,14 +73,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Strip noisy whitespace, page numbers, repeated headers/footers from the
-    // PDF/DOCX extraction. Keeps token count low so we fit Groq's free-tier
-    // 8K TPM budget. Same for the JD field.
-    const compressedResume = compressText(resumeText);
-    const compressedJd = compressText(jd);
+    // Strip noisy whitespace, page numbers, repeated headers/footers,
+    // EEO/boilerplate, and long URL paths. Then hard-cap each input at
+    // a per-text budget so the COMBINED request can never exceed
+    // Groq's free-tier 8K TPM ceiling — pre-cap users were getting
+    // "Requested 8315, Limit 8000" errors because our token estimate
+    // ran ~10% below reality. estimateTokens is now chars/3.5 (more
+    // pessimistic) and we still truncate as a belt + suspenders.
+    //
+    // Per-input caps (tightened after a real-world "Requested 8524,
+    // Limit 8000" breach with the previous 1800/2500 caps):
+    //   - JD: 1500 tokens — JDs are mostly keyword bait + boilerplate
+    //     past the requirements list. Truncating fluff is low-cost.
+    //   - Resume: 2000 tokens — the candidate's actual content;
+    //     trimmed second (and harder) only when needed.
+    //
+    // Together that's max 3500 input + ~400 prompt scaffold +
+    // 2500 output reservation + 1200 safety = ~7600 worst-case
+    // estimated. If Groq's real tokenizer still disagrees, lib/llm.ts
+    // catches the 413 and auto-shrinks once.
+    const MAX_JD_TOKENS = 1500;
+    const MAX_RESUME_TOKENS = 2000;
+    const compressedResumeRaw = compressText(resumeText);
+    const compressedJdRaw = compressText(jd);
+    const compressedJd = truncateToTokenBudget(compressedJdRaw, MAX_JD_TOKENS);
+    const compressedResume = truncateToTokenBudget(
+      compressedResumeRaw,
+      MAX_RESUME_TOKENS
+    );
     if (process.env.NODE_ENV !== 'production') {
       console.log(
-        `Compression: resume ${resumeText.length} → ${compressedResume.length} chars (~${estimateTokens(resumeText)} → ${estimateTokens(compressedResume)} tokens), jd ${jd.length} → ${compressedJd.length} chars`
+        `Compression: resume ${resumeText.length} → ${compressedResumeRaw.length} → ${compressedResume.length} chars (~${estimateTokens(resumeText)} → ${estimateTokens(compressedResume)} tokens), jd ${jd.length} → ${compressedJdRaw.length} → ${compressedJd.length} chars (~${estimateTokens(jd)} → ${estimateTokens(compressedJd)} tokens)`
       );
     }
 

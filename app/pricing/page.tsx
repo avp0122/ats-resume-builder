@@ -3,7 +3,22 @@ import { PLANS } from '@/lib/pricing';
 import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { effectivePlan, type EffectivePlan } from '@/lib/plan';
 
-export const metadata = { title: 'Pricing — kairesume' };
+// Title template in app/layout.tsx already appends "— kairesume", so we
+// pass just the page name here. Per-page description matters for both
+// SERP snippet quality and for OG cards when the URL is shared.
+export const metadata = {
+  title: 'Pricing — free, $4.99/mo, or save 30% yearly',
+  description:
+    'kairesume pricing — free tier with 1 anonymous + 3/month signed-in generations, Pro at $4.99/month. Save 20% with 3 months ($11.98) or 30% with 1 year ($41.92). Pay in USDT (TRC-20 or ERC-20).',
+  alternates: { canonical: 'https://kairesume.fit/pricing' },
+  openGraph: {
+    title: 'kairesume — pricing',
+    description:
+      'Free AI resume builder. Pro from $4.99/month — pay in USDT, no card, no auto-renew.',
+    url: 'https://kairesume.fit/pricing',
+    type: 'website',
+  },
+};
 
 export default async function PricingPage() {
   // Detect viewer status so each card can show the right CTA.
