@@ -40,11 +40,15 @@ interface GenerationResult {
   usage: {
     count: number;
     freeLimit: number;
+    // Server returns `remaining` on success and on the 402-cap response.
+    // Pro users get null (unlimited).
+    remaining?: number | null;
     downloadAllowed: boolean;
     needsSignin: boolean;
     signedIn: boolean;
     plan: 'free' | 'pro';
     proUntil: string | null;
+    upgradeRequired?: boolean;
   };
 }
 
@@ -232,6 +236,37 @@ export default function Home() {
     }
   }, []);
 
+  // Map the `usage` block on a /api/generate response (success OR
+  // 402-upgrade-required) into the QuotaInfo shape and update local
+  // quota state. Pre-fix `quota` was only fetched once on mount, so
+  // after a generation the "X of 3 remaining" banner stayed stale —
+  // a user who'd just hit the cap would see both an "all 3 used"
+  // error AND a "2 of 3 remaining" banner at the same time.
+  const applyQuotaFromResponse = useCallback(
+    (usage: GenerationResult['usage'] | undefined) => {
+      if (!usage) return;
+      const remaining =
+        typeof usage.remaining === 'number'
+          ? usage.remaining
+          : usage.plan === 'pro'
+          ? null
+          : Math.max(0, usage.freeLimit - usage.count);
+      setQuota({
+        signedIn: usage.signedIn,
+        plan: usage.plan,
+        count: usage.count,
+        freeLimit: usage.freeLimit,
+        remaining,
+        proUntil: usage.proUntil,
+        upgradeRequired:
+          'upgradeRequired' in usage && typeof usage.upgradeRequired === 'boolean'
+            ? usage.upgradeRequired
+            : usage.signedIn && usage.plan === 'free' && remaining === 0,
+      });
+    },
+    []
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formState.jd.trim() || !formState.resume) {
@@ -251,6 +286,11 @@ export default function Home() {
       if (client?.version) formData.append('client_version', client.version);
       const response = await fetch('/api/generate', { method: 'POST', body: formData });
       const data = await response.json();
+      // Refresh quota from whichever response shape we got — success
+      // responses always carry `usage`; the 402-quota-exhausted error
+      // also includes `usage` so we can flip the banner to UpgradePromo
+      // immediately even on the failed call.
+      applyQuotaFromResponse(data?.usage);
       if (!response.ok) throw new Error(data.error || 'Failed to generate content');
       setResult(data);
       setActiveTab('resume');
