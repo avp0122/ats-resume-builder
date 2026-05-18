@@ -267,12 +267,12 @@ export default function Home() {
   // chars/4 because Groq's actual tokenizer disagrees more on
   // URL-heavy / code-heavy text than chars/4 suggests.
   const jdTokenCount = jdTrimmed ? Math.ceil(jdTrimmed.length / 3) : 0;
-  // Free-tier soft caps mirror lib/llm.ts (TPM 8000 − 1200 safety −
-  // 2500 output = 4300 input) and the per-input JD cap in
-  // /api/generate (1500). Server auto-truncates anyway, but we warn
+  // Free-tier soft caps mirror lib/llm.ts (TPM 12000 − 1200 safety −
+  // 2500 output = 8300 input) and the per-input JD cap in
+  // /api/generate (2500). Server auto-truncates anyway, but we warn
   // the user before they submit so they can trim if they want.
-  const TOKEN_BUDGET = 4300;
-  const JD_TOKEN_SOFT_CAP = 1500;
+  const TOKEN_BUDGET = 8300;
+  const JD_TOKEN_SOFT_CAP = 2500;
   const overBudget = jdTokenCount > JD_TOKEN_SOFT_CAP;
   // Signed-in free user who has used all 3 generations — Generate is gated.
   const quotaExhausted =
@@ -1045,7 +1045,7 @@ function InputStatsCard({ stats }: { stats: InputStats }) {
   const totalTokens = stats.jdTokens + stats.resumeTokens;
   // Mirror the lib/llm.ts budget so the user sees the same number the
   // server uses to decide if a request fits.
-  const SOFT_CAP = 4300; // TPM 8000 − 1200 safety − 2500 for output
+  const SOFT_CAP = 8300; // TPM 12000 − 1200 safety − 2500 for output
   const pct = Math.min(100, Math.round((totalTokens / SOFT_CAP) * 100));
   const exceeded = totalTokens > SOFT_CAP;
   return (

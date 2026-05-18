@@ -232,7 +232,11 @@ async function callGroq(prompt: string, maxTokens: number): Promise<GroqCallResu
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'openai/gpt-oss-120b',
+      // Llama 3.3 70B on Groq's free tier — ~12K TPM (vs 8K on
+      // gpt-oss-120b), excellent JSON-mode reliability, and similar
+      // capability for ATS rewrites + cover letters. The previous
+      // model was hitting the 8K cap constantly.
+      model: 'llama-3.3-70b-versatile',
       messages: [
         {
           role: 'system',
@@ -280,24 +284,19 @@ export async function generateATSContent(
   const { getATSPrompt } = await import('./prompts');
   const { estimateTokens, truncateToTokenBudget } = await import('./utils');
 
-  // Groq free-tier ceiling. Real-world breaches we've seen at this
-  // call site:
+  // Groq free-tier ceiling for llama-3.3-70b-versatile is 12K TPM
+  // (vs 8K we had on gpt-oss-120b). History of breaches we've chased
+  // at this codepath, all on the old 8K-TPM model:
   //   • Requested 8315 with SAFETY_MARGIN=300 + chars/4 estimator
   //   • Requested 8524 with SAFETY_MARGIN=800 + chars/3.5 estimator
-  // The fundamental issue: estimateTokens (chars/N) under-counts when
-  // inputs contain URLs / code / unusual punctuation — Groq's actual
-  // tokenizer disagrees. Belt-and-braces fix:
-  //   1. SAFETY_MARGIN 800 → 1200
-  //   2. Per-input caps at the route layer dropped to 1500/2000 (was
-  //      1800/2500) — so total upstream commit can't exceed ~3900
-  //      estimated input tokens.
-  //   3. If Groq still returns 413, halve the inputs in-process and
-  //      retry once. The user gets a successful (slightly shorter)
-  //      generation instead of an error.
-  const TPM_BUDGET = 8000;
+  // The chars/3 estimator + 1200 safety margin we landed on stays.
+  // The 413-auto-retry-with-shrink path below also stays as belt-
+  // and-braces — even with 12K headroom, the estimator gap could
+  // bite for URL/code-heavy inputs.
+  const TPM_BUDGET = 12000;
   const SAFETY_MARGIN = 1200;
   const MIN_OUTPUT = 2500;
-  const MAX_OUTPUT = 5500;
+  const MAX_OUTPUT = 6000; // bumped from 5500 — more room for the rewritten resume + cover letter
 
   // Attempt 1 with the inputs as given.
   try {
