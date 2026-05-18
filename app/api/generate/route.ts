@@ -75,25 +75,22 @@ export async function POST(request: NextRequest) {
 
     // Strip noisy whitespace, page numbers, repeated headers/footers,
     // EEO/boilerplate, and long URL paths. Then hard-cap each input at
-    // a per-text budget so the COMBINED request can never exceed
-    // Groq's free-tier 8K TPM ceiling — pre-cap users were getting
-    // "Requested 8315, Limit 8000" errors because our token estimate
-    // ran ~10% below reality. estimateTokens is now chars/3.5 (more
-    // pessimistic) and we still truncate as a belt + suspenders.
+    // a per-text budget. With llama-3.3-70b-versatile we have 12K TPM
+    // (up from 8K on gpt-oss-120b), so the per-input caps can be much
+    // more generous without risking the rate limit.
     //
-    // Per-input caps (tightened after a real-world "Requested 8524,
-    // Limit 8000" breach with the previous 1800/2500 caps):
-    //   - JD: 1500 tokens — JDs are mostly keyword bait + boilerplate
-    //     past the requirements list. Truncating fluff is low-cost.
-    //   - Resume: 2000 tokens — the candidate's actual content;
-    //     trimmed second (and harder) only when needed.
+    // Per-input caps:
+    //   - JD: 2500 tokens — most JDs comfortably fit; only the longest
+    //     ones with extensive boilerplate get trimmed.
+    //   - Resume: 4500 tokens — handles 3–4 page resumes without
+    //     touching the original content.
     //
-    // Together that's max 3500 input + ~400 prompt scaffold +
-    // 2500 output reservation + 1200 safety = ~7600 worst-case
+    // Together that's max 7000 input + ~400 prompt scaffold +
+    // 2500 output reservation + 1200 safety = ~11100 worst-case
     // estimated. If Groq's real tokenizer still disagrees, lib/llm.ts
     // catches the 413 and auto-shrinks once.
-    const MAX_JD_TOKENS = 1500;
-    const MAX_RESUME_TOKENS = 2000;
+    const MAX_JD_TOKENS = 2500;
+    const MAX_RESUME_TOKENS = 4500;
     const compressedResumeRaw = compressText(resumeText);
     const compressedJdRaw = compressText(jd);
     const compressedJd = truncateToTokenBudget(compressedJdRaw, MAX_JD_TOKENS);
