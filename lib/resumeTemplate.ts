@@ -143,13 +143,23 @@ function styleResumeBody(html: string): string {
   // Page-break strategy:
   //   - Headings (h2/h3): page-break-AFTER:avoid so a section title
   //     never lands on the last line of a page with its content on
-  //     the next.
-  //   - Paragraphs (<p>): NO page-break-inside:avoid. Pre-fix this
-  //     pushed long summary paragraphs to page 2 whenever they
-  //     didn't fit cleanly below the header, leaving page 1 almost
-  //     empty. Paragraphs can split across pages.
-  //   - List items (<li>): page-break-inside:avoid kept — splitting a
-  //     bullet mid-sentence reads worse than letting it move whole.
+  //     the next. h3 also gets page-break-INSIDE:avoid because a job
+  //     title that wraps to two lines shouldn't split.
+  //   - Paragraphs (<p>): page-break-inside:avoid. Without this,
+  //     short entries (Education lines, Skills "Category: list"
+  //     rows) get sliced HORIZONTALLY mid-glyph — the bottom half
+  //     of "MS Data Science, UCLA (09/2021 – 05/2023)" lands on
+  //     page 1 and the top half on page 2.
+  //     We removed this rule once before because it pushed the long
+  //     Professional Summary paragraph to page 2 and left page 1
+  //     near-empty — but that turned out to be caused by html2pdf's
+  //     'avoid-all' pagebreak mode injecting the rule onto wrapper
+  //     divs too. With the mode now set to ['css', 'legacy'] in
+  //     app/page.tsx, the rule only applies to <p> itself, and the
+  //     Summary (the first paragraph, always near the top of page 1)
+  //     has plenty of room.
+  //   - List items (<li>): page-break-inside:avoid kept — splitting
+  //     a bullet mid-sentence reads worse than letting it move whole.
   return html
     .replace(
       /<h2(\b[^>]*)>/g,
@@ -157,11 +167,11 @@ function styleResumeBody(html: string): string {
     )
     .replace(
       /<h3(\b[^>]*)>/g,
-      `<h3$1 style="margin:10px 0 2px;font-size:11.5pt;font-weight:600;color:#0f172a;page-break-after:avoid;break-after:avoid;">`
+      `<h3$1 style="margin:10px 0 2px;font-size:11.5pt;font-weight:600;color:#0f172a;page-break-after:avoid;break-after:avoid;page-break-inside:avoid;break-inside:avoid;">`
     )
     .replace(
       /<p(\b[^>]*)>/g,
-      `<p$1 style="margin:0 0 8px;color:#1e293b;line-height:1.55;">`
+      `<p$1 style="margin:0 0 8px;color:#1e293b;line-height:1.55;page-break-inside:avoid;break-inside:avoid;">`
     )
     .replace(
       /<ul(\b[^>]*)>/g,
