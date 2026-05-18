@@ -21,13 +21,43 @@ EXTRACT job context from the JD:
   jobCompany: company name as written in the JD. Empty string if unclear.
 
 REWRITE the resume to be ATS-friendly. RULES:
-- Sections in order: "Professional Summary", "Skills", "Experience", "Education", "Certifications" (if any).
-- DO NOT include name, contact info, or social links — those come from personalInfo.
+
+PRESERVE COMPLETENESS — this is critical. Do NOT summarise, condense, or
+omit content. "ATS-optimized rewrite" means rephrase for keyword density
+and clean formatting, NOT shorten:
+- Include EVERY job from the original resume, in the same chronological
+  order (newest first). If the original lists 8 jobs, you list 8 jobs.
+- For each job, include AT LEAST as many bullets as the original. If the
+  original has 7 bullets, you write at least 7 bullets. Rephrase each
+  bullet to surface JD keywords + quantified results, but do not drop
+  any bullet for being redundant or generic.
+- The Skills section MUST preserve every category from the original
+  (e.g. AI/LLM, Front-End, Back-End, Mobile, Databases, Cloud,
+  DevOps/IaC, Observability, Security, Messaging, Testing, Methodology)
+  and list the SPECIFIC technologies under each. Do NOT collapse them
+  into generic labels like "Cloud Computing" or "Backend Development".
+- Include EVERY education entry, certification, language, and award
+  present in the original.
+- The rewritten resume should be roughly the SAME LENGTH as the original
+  (within ~10%). If your output is materially shorter, you have
+  summarised — go back and restore the dropped content.
+
+FORMATTING:
+- Sections in order: "Professional Summary", "Skills", "Experience",
+  "Education", "Certifications" (if any), "Languages" (if any).
+- DO NOT include name, contact info, or social links — those come from
+  personalInfo.
 - No tables, no columns, no graphics, no headers/footers.
-- Plain HTML only: <h2> for section headings, <h3> for job titles, <p>, <ul>, <li>, <strong>.
-- Bullet points: action verb + quantified result.
+- Plain HTML only: <h2> for section headings, <h3> for job titles, <p>,
+  <ul>, <li>, <strong>. For Skills, use <p><strong>Category:</strong>
+  comma-separated list</p> so each category stays intact.
+- Bullet points: action verb + quantified result where the original had
+  a quantified result. Preserve all metrics from the original
+  (percentages, dollar figures, headcount, durations).
 - Dates: "MMM YYYY – MMM YYYY".
-- ONLY surface skills/experience that genuinely exist in the original resume. NEVER invent.
+- ONLY surface skills/experience that genuinely exist in the original
+  resume. NEVER invent. Completeness rule applies to PRESERVING content
+  — it does not license fabrication.
 
 WRITE a cover letter — body only, 3-4 short paragraphs in <p> tags.
 - Open with "Dear Hiring Manager," (or named recipient if the JD provides one).
