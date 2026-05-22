@@ -36,7 +36,10 @@ const FOUNDER = {
     twitter: '',
   },
 };
-const SITE_TAGLINE = 'The cheapest AI resume builder — free ATS-tailored resumes & cover letters';
+
+// Kept ≤ 60 chars so Google's SERP doesn't truncate the title.
+// Full rendered title = `${SITE_NAME} — ${SITE_TAGLINE}` = 54 chars.
+const SITE_TAGLINE = 'Free AI ATS resume & cover letter builder';
 const SITE_DESCRIPTION =
   'kairesume is the cheapest AI resume builder. Generate free, AI-tailored, ATS-optimized resumes and cover letters with an instant match score. Score higher, land more interviews — best-match keywords highlighted, unlimited Pro for $4.99/month.';
 
