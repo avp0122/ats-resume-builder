@@ -10,6 +10,33 @@ import { Analytics } from '@vercel/analytics/next';
 
 const SITE_URL = 'https://kairesume.fit';
 const SITE_NAME = 'kairesume';
+
+// === Edit this block to update the public-facing founder identity ===
+// Used to render the Person JSON-LD at the bottom of <head>. Empty
+// strings are dropped from the schema output (no broken-link
+// `sameAs` entries for accounts that don't exist).
+const FOUNDER = {
+  name: 'Andrei VP',
+  jobTitle: 'Founder & Engineer, kairesume',
+  knowsAbout: [
+    'AI',
+    'ATS resume optimization',
+    'Cover letter generation',
+    'Full-stack web development',
+    'Next.js',
+    'TypeScript',
+    'Crypto payments',
+  ],
+  // Add or remove URLs as you create accounts. Empty strings are
+  // filtered out automatically — leave them if you haven't set up
+  // that profile yet.
+  sameAs: {
+    github: 'https://github.com/avp0122',
+    linkedin: '',
+    twitter: '',
+  },
+};
+
 // Kept ≤ 60 chars so Google's SERP doesn't truncate the title.
 // Full rendered title = `${SITE_NAME} — ${SITE_TAGLINE}` = 54 chars.
 const SITE_TAGLINE = 'Free AI ATS resume & cover letter builder';
@@ -148,6 +175,25 @@ const APP_JSONLD = {
   ],
 };
 
+// Person schema for the founder. Answer engines (Perplexity, ChatGPT,
+// Gemini) use this to link the product to a real human — useful for
+// trust signals and "who built kairesume?" type queries. Edit FOUNDER
+// above to update.
+const FOUNDER_JSONLD = {
+  '@context': 'https://schema.org',
+  '@type': 'Person',
+  name: FOUNDER.name,
+  url: SITE_URL,
+  jobTitle: FOUNDER.jobTitle,
+  worksFor: {
+    '@type': 'Organization',
+    name: SITE_NAME,
+    url: SITE_URL,
+  },
+  knowsAbout: FOUNDER.knowsAbout,
+  sameAs: Object.values(FOUNDER.sameAs).filter((url): url is string => !!url),
+};
+
 // HowTo for AEO — answer engines love step-by-step structured data
 // because they can render it as a numbered card directly in the
 // response ("To get an ATS-optimized resume from kairesume: …").
@@ -216,6 +262,10 @@ export default function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(HOW_TO_JSONLD) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(FOUNDER_JSONLD) }}
         />
       </head>
       <body className="antialiased min-h-screen text-white flex flex-col">
