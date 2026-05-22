@@ -235,7 +235,7 @@ const HOW_TO_JSONLD = {
       '@type': 'HowToStep',
       position: 4,
       name: 'Download the ZIP',
-      text: 'After a free signup, download a ZIP with both PDFs: <fullname>_resume.pdf and <fullname>_coverletter.pdf. The ZIP filename also embeds the target role and company so you can keep multiple applications straight.',
+      text: 'After a free signup, download a ZIP containing four files: <fullname>_resume.pdf, <fullname>_resume.docx, <fullname>_coverletter.pdf, <fullname>_coverletter.docx. The ZIP filename also embeds the target role and company so you can keep multiple applications straight. DOCX is preferred by most ATS parsers.',
       url: SITE_URL,
     },
   ],
