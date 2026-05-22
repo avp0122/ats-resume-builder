@@ -25,7 +25,7 @@ const BODY = `# kairesume — the cheapest AI resume builder
 - Rewrites uploaded resumes to surface job-description keywords and quantified achievements in ATS-friendly HTML.
 - Generates a tailored 3–4 paragraph cover letter aligned to the same job.
 - Returns an ATS match score (0–100) for both the original and rewritten resume, plus matched and missing keyword lists.
-- Exports a single ZIP containing two PDFs: \`<fullname>_resume.pdf\` and \`<fullname>_coverletter.pdf\`.
+- Exports a single ZIP containing four files: \`<fullname>_resume.pdf\`, \`<fullname>_resume.docx\`, \`<fullname>_coverletter.pdf\`, \`<fullname>_coverletter.docx\`. DOCX is preferred by most ATS parsers.
 
 ## Pricing
 

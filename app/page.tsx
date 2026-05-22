@@ -352,7 +352,9 @@ export default function Home() {
   );
 
   /**
-   * Download a single ZIP containing the resume + cover letter PDFs.
+   * Download a single ZIP containing the resume + cover letter in both
+   * PDF and DOCX formats (4 files total — DOCX is preferred by many
+   * ATS parsers, PDF is the canonical print format).
    * Filenames include the detected client OS (e.g. "windows_11") so future
    * customization workflows can route based on platform.
    *
@@ -360,6 +362,34 @@ export default function Home() {
    * if `client?.os === 'windows'`, POST `pdfResumeHtml` to that endpoint,
    * swap the returned Blob into the ZIP under the same filename scheme.
    */
+  /**
+   * Convert the rendered resume/cover-letter HTML to a Word .docx Blob.
+   * Many ATS systems prefer DOCX over PDF (they parse it as actual
+   * structured Office Open XML rather than re-extracting text from PDF
+   * glyphs), so we ship both formats inside the same ZIP.
+   *
+   * Uses @turbodocx/html-to-docx which produces real OOXML — Word and
+   * Google Docs both open it cleanly. The library is browser-safe so
+   * we keep generation entirely client-side (no extra server load,
+   * no extra Vercel function cold-start).
+   */
+  const renderDocxBlob = useCallback(async (htmlContent: string): Promise<Blob> => {
+    const mod = await import('@turbodocx/html-to-docx');
+    const HTMLtoDOCX: any = (mod as any).default ?? mod;
+    // Standard US Letter at 1" margins. Returns Blob in browser.
+    const result = await HTMLtoDOCX(htmlContent, undefined, {
+      orientation: 'portrait',
+      margins: { top: 1440, right: 1440, bottom: 1440, left: 1440 }, // 1" each
+      font: 'Calibri',
+      fontSize: 22, // half-points → 11pt
+    });
+    return result instanceof Blob
+      ? result
+      : new Blob([result], {
+          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        });
+  }, []);
+
   const downloadZip = useCallback(async () => {
     if (!result) return;
     // The download button is only rendered when downloadAllowed is true, but
@@ -368,11 +398,17 @@ export default function Home() {
     setDownloading(true);
     setDownloadError(null);
     try {
-      const [resumeBlob, coverBlob, JSZipMod] = await Promise.all([
-        renderPdfBlob(pdfResumeHtml),
-        renderPdfBlob(pdfCoverHtml),
-        import('jszip'),
-      ]);
+      // PDFs render in parallel; DOCX in parallel too. All four blobs
+      // start at the same time so download-prep is ~max-of-four rather
+      // than sum.
+      const [resumeBlob, coverBlob, resumeDocxBlob, coverDocxBlob, JSZipMod] =
+        await Promise.all([
+          renderPdfBlob(pdfResumeHtml),
+          renderPdfBlob(pdfCoverHtml),
+          renderDocxBlob(pdfResumeHtml),
+          renderDocxBlob(pdfCoverHtml),
+          import('jszip'),
+        ]);
       const JSZip = JSZipMod.default;
 
       // Filename: <role>_<company>_<fullname> so a user who runs multiple
@@ -401,7 +437,9 @@ export default function Home() {
 
       const zip = new JSZip();
       zip.file(`${nameSlug}_resume.pdf`, resumeBlob);
+      zip.file(`${nameSlug}_resume.docx`, resumeDocxBlob);
       zip.file(`${nameSlug}_coverletter.pdf`, coverBlob);
+      zip.file(`${nameSlug}_coverletter.docx`, coverDocxBlob);
       const zipBlob = await zip.generateAsync({ type: 'blob' });
 
       const url = URL.createObjectURL(zipBlob);
@@ -420,7 +458,7 @@ export default function Home() {
     } finally {
       setDownloading(false);
     }
-  }, [client, pdfResumeHtml, pdfCoverHtml, renderPdfBlob, result]);
+  }, [client, pdfResumeHtml, pdfCoverHtml, renderPdfBlob, renderDocxBlob, result]);
 
   return (
     <main className="max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
@@ -844,7 +882,7 @@ function SeoContent() {
     },
     {
       q: 'What file formats are supported?',
-      a: 'Upload PDF or DOCX (up to 10 MB). The output is downloaded as a ZIP containing two PDFs — fullname_resume.pdf and fullname_coverletter.pdf — with the target role and company embedded in the ZIP filename.',
+      a: 'Upload PDF or DOCX (up to 10 MB). The output is downloaded as a ZIP containing four files — fullname_resume.pdf, fullname_resume.docx, fullname_coverletter.pdf, fullname_coverletter.docx — with the target role and company embedded in the ZIP filename. DOCX is often preferred by ATS parsers.',
     },
     {
       q: 'How do I pay for Pro?',
@@ -943,7 +981,7 @@ function DownloadButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      title={lockedReason || 'Downloads a ZIP with the resume and cover letter PDFs'}
+      title={lockedReason || 'Downloads a ZIP with the resume and cover letter as both PDF and DOCX'}
       aria-label={lockedReason || 'Download .zip'}
       className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition shadow ${
         locked
