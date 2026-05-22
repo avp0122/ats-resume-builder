@@ -139,8 +139,7 @@ export async function POST(request: NextRequest) {
       if (currentAnonCount >= FREE_LIMIT) {
         return NextResponse.json(
           {
-            error:
-              'Free anonymous generation limit reached. Sign up free to get 3 generations per month.',
+            error: `Free anonymous generation limit reached. Sign up free to get ${SIGNED_IN_FREE_GENERATIONS} generations per month.`,
           },
           { status: 403 }
         );

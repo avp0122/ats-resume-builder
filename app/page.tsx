@@ -8,6 +8,10 @@ import ATSScore from '@/components/ATSScore';
 import type { PersonalInfo } from '@/lib/llm';
 import { renderCoverLetterDocument, renderResumeDocument } from '@/lib/resumeTemplate';
 import { detectClient, type ClientInfo } from '@/lib/clientInfo';
+import {
+  ANON_FREE_GENERATIONS,
+  SIGNED_IN_FREE_GENERATIONS,
+} from '@/lib/pricing';
 
 interface InputStats {
   jdWords: number;
@@ -440,8 +444,16 @@ export default function Home() {
         </p>
 
         <div className="mt-7 grid sm:grid-cols-3 gap-2 max-w-2xl mx-auto text-xs">
-          <TierBadge label="Anonymous" value="1 generation" tone="muted" />
-          <TierBadge label="Free + signed up" value="3 / month" tone="muted" />
+          <TierBadge
+            label="Anonymous"
+            value={`${ANON_FREE_GENERATIONS} generation`}
+            tone="muted"
+          />
+          <TierBadge
+            label="Free + signed up"
+            value={`${SIGNED_IN_FREE_GENERATIONS} / month`}
+            tone="muted"
+          />
           <TierBadge label="Pro" value="Unlimited · $4.99/mo" tone="vibrant" />
         </div>
       </header>
@@ -808,7 +820,7 @@ function SeoContent() {
     },
     {
       q: 'Is kairesume free?',
-      a: 'Yes. You get one free generation without signing up and three free generations per month after a free account is created. No card is required at any tier.',
+      a: `Yes. You get ${ANON_FREE_GENERATIONS} free generation without signing up and ${SIGNED_IN_FREE_GENERATIONS} free generations per month after a free account is created. No card is required at any tier.`,
     },
     {
       q: 'How does the ATS resume optimization work?',
@@ -873,7 +885,7 @@ function SeoContent() {
 
         <div className="mt-8 grid sm:grid-cols-2 gap-4">
           <SeoBullet title="Free AI resume builder">
-            One free generation, no signup. Three free generations per month after signing
+            {ANON_FREE_GENERATIONS} free generation, no signup. {SIGNED_IN_FREE_GENERATIONS} free generations per month after signing
             up. Pay only if you need unlimited — Pro is $4.99/month.
           </SeoBullet>
           <SeoBullet title="ATS-optimized & tailored">
@@ -1147,7 +1159,7 @@ function PaywallCard({
     : 'Sign up to unlock the optimized result';
   const sub = signedIn
     ? 'Upgrade to Pro for unlimited generations, downloads, copy and preview — $4.99/month, paid in crypto.'
-    : 'Anonymous users see only the ATS score. Create a free account to preview, copy, and download the rewritten resume + cover letter (3 generations / month).';
+    : `Anonymous users see only the ATS score. Create a free account to preview, copy, and download the rewritten resume + cover letter (${SIGNED_IN_FREE_GENERATIONS} generations / month).`;
   const ctaHref = signedIn ? '/pricing' : '/signup';
   const ctaLabel = signedIn ? 'Upgrade to Pro' : 'Sign up free';
   const secondaryHref = signedIn ? null : '/signin';
@@ -1177,7 +1189,7 @@ function PaywallCard({
           {signedIn ? (
             <PaywallBullet locked>Unlimited generations</PaywallBullet>
           ) : (
-            <PaywallBullet locked>3 generations / month</PaywallBullet>
+            <PaywallBullet locked>{SIGNED_IN_FREE_GENERATIONS} generations / month</PaywallBullet>
           )}
         </ul>
 
