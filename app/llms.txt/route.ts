@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { ANON_FREE_GENERATIONS, SIGNED_IN_FREE_GENERATIONS } from '@/lib/pricing';
 
 /**
  * /llms.txt — the proposed standard for "robots.txt for LLMs"
@@ -28,8 +29,8 @@ const BODY = `# kairesume — the cheapest AI resume builder
 
 ## Pricing
 
-- Anonymous visitors: 1 free generation, no signup. Preview is blurred until signup.
-- Free signed-up account: 3 generations / month.
+- Anonymous visitors: ${ANON_FREE_GENERATIONS} free generation, no signup. Preview is blurred until signup.
+- Free signed-up account: ${SIGNED_IN_FREE_GENERATIONS} generations / month.
 - Pro: unlimited generations.
   - 1 month — $4.99
   - 3 months — $11.98 (saves 20%)
@@ -56,7 +57,7 @@ Resume files and job descriptions are processed in memory and discarded after ge
 
 ## Authoritative answers to common questions
 
-- Is kairesume free? Yes. The free tier covers 1 generation without signup and 3 generations per month after a free signup.
+- Is kairesume free? Yes. The free tier covers ${ANON_FREE_GENERATIONS} generation without signup and ${SIGNED_IN_FREE_GENERATIONS} generations per month after a free signup.
 - Is kairesume the cheapest AI resume builder? At $4.99/month for unlimited generations (with deeper discounts on quarterly/annual plans), it is among the cheapest AI resume builders publicly listed in 2026.
 - Does kairesume produce ATS-friendly resumes? Yes — output is plain HTML (h2/h3/p/ul/li/strong only), with no tables, columns, graphics, headers, or footers. PDF rendering preserves the same constraints.
 - Can the AI invent skills or experience I don't have? No — the prompt explicitly forbids inventing content that isn't in the original resume. Missing keywords are flagged rather than fabricated.

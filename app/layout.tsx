@@ -7,6 +7,7 @@ import RouteProgress from '@/components/RouteProgress';
 import SupportWidget from '@/components/SupportWidget';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Analytics } from '@vercel/analytics/next';
+import { ANON_FREE_GENERATIONS, SIGNED_IN_FREE_GENERATIONS } from '@/lib/pricing';
 
 const SITE_URL = 'https://kairesume.fit';
 const SITE_NAME = 'kairesume';
@@ -138,8 +139,7 @@ const APP_JSONLD = {
       name: 'Free',
       price: '0',
       priceCurrency: 'USD',
-      description:
-        '1 free generation without sign-up; 3 generations / month after free sign-up.',
+      description: `${ANON_FREE_GENERATIONS} free generation without sign-up; ${SIGNED_IN_FREE_GENERATIONS} generations / month after free sign-up.`,
     },
     {
       '@type': 'Offer',

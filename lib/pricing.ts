@@ -86,7 +86,11 @@ export function coerceBillingPeriod(value: unknown): BillingPeriod {
   return DEFAULT_PRO_PERIOD;
 }
 
-export const SIGNED_IN_FREE_GENERATIONS = 3;
+// Bumped 3 → 10. Most legitimate single-user-per-month flows fit
+// comfortably under 10 (one resume per job application, ~3-5 apps/wk
+// is a typical job-hunt cadence). Higher than 10 starts to look like
+// abuse / per-employer mass output, which Pro is for.
+export const SIGNED_IN_FREE_GENERATIONS = 10;
 export const ANON_FREE_GENERATIONS = 1;
 
 /**
