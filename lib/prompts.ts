@@ -106,3 +106,73 @@ Original Resume:
 ${resume}
 `;
 }
+
+/**
+ * Standalone cover-letter prompt used when we have *external* research about
+ * the target company (typically via Tavily, see lib/companyResearch.ts).
+ * Run as a SECOND, shorter LLM call after `getATSPrompt` returns. Output is
+ * just the cover-letter body HTML — no resume, no scoring — so the prompt
+ * + response are both small.
+ *
+ * Returns the same `coverLetter` field shape the home page expects, so the
+ * caller can swap it into the result from the first call.
+ */
+export function getCoverLetterPrompt(args: {
+  jd: string;
+  resumeHtml: string;
+  jobRole: string;
+  jobCompany: string;
+  candidateName: string;
+  /**
+   * 1-3 paragraph fresh summary of the target company from external
+   * research. Treat as ground truth — these are the specifics the cover
+   * letter should anchor to.
+   */
+  companyContext: string;
+}): string {
+  const { jd, resumeHtml, jobRole, jobCompany, candidateName, companyContext } = args;
+
+  return `You are writing a single cover letter. Output ONE JSON object:
+{"coverLetter":"<html>"}
+
+VOICE: write like a smart human, not a corporate template. Specific, conversational, confident, brief. ≤ 280 words total.
+
+STRUCTURE — exactly this shape, each paragraph in its OWN <p> tag (never concatenate paragraphs into a single <p>, never use <br> as paragraph separator):
+- <p>1. Hook (2-3 sentences):</p> Open with "Dear Hiring Manager,". Then ONE concrete sentence about why this specific role at this specific company — anchor on a product, customer, mission, or recent move from COMPANY CONTEXT below (not just from the JD). NEVER open with "I am writing to apply for…" or "I am excited to apply for…".
+- <p>2. Proof (2-3 sentences):</p> ONE specific story from the RESUME that maps to ONE specific requirement from the JD. Name the tool, the outcome, and a number if the original has one. No generic claims.
+- <p>3. (Optional) Bridge (1-2 sentences):</p> Address one obvious gap or context (career switch, location, level jump). Skip this paragraph if there's nothing real to address — do not pad.
+- <p>4. Close (1-2 sentences):</p> Restate fit using a specific phrase from the JD, then a forward-looking line about a call. NEVER write "Sincerely", "Best regards", or sign with the candidate's name — both come from the template.
+
+BANNED PHRASES — do not use any of these:
+- "I am writing to apply" / "I am excited to apply" / "I am excited about the opportunity"
+- "I am confident that my skills" / "I am confident in my ability"
+- "I am well-versed in" / "I have a strong background in"
+- "I am impressed by" / "I am passionate about"
+- "Thank you for considering my application"
+- "I look forward to discussing my qualifications" / "I look forward to the opportunity"
+- "I believe my experience makes me a strong fit"
+- Any sentence starting with "As a [seniority] [role] with X years…"
+
+SPECIFICITY RULES:
+- At least ONE proper noun from COMPANY CONTEXT (product name, customer, market, recent launch) must appear in paragraph 1 — pull it directly from the context block below, not from the JD's marketing copy.
+- At least ONE proper noun + ONE concrete number from the RESUME must appear in paragraph 2.
+- If COMPANY CONTEXT mentions something interesting (a recent funding round, a notable customer, a new product), reference it naturally.
+
+OUTPUT (STRICT): one JSON object, no markdown, no prose:
+{"coverLetter":"<html>"}
+
+COMPANY CONTEXT (fresh research, treat as ground truth):
+${companyContext}
+
+JOB CONTEXT:
+- Role: ${jobRole}
+- Company: ${jobCompany}
+- Candidate name: ${candidateName}
+
+Job Description:
+${jd}
+
+Candidate's rewritten resume (use facts from here, do not invent):
+${resumeHtml}
+`;
+}
