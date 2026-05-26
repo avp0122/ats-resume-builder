@@ -36,26 +36,76 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const jd = formData.get('jd') as string;
-    const resumeFile = formData.get('resume') as File;
+    const resumeFile = formData.get('resume') as File | null;
     const clientOs = (formData.get('client_os') as string | null) || null;
     const clientVersion = (formData.get('client_version') as string | null) || null;
 
-    if (!jd || !resumeFile) {
+    if (!jd) {
       return NextResponse.json(
-        { error: 'Both job description and resume file are required' },
+        { error: 'A job description is required.' },
         { status: 400 }
       );
     }
-    if (resumeFile.size > 10 * 1024 * 1024) {
-      return NextResponse.json({ error: 'Resume file too large. Max 10MB.' }, { status: 400 });
+
+    // Decide where the resume text comes from:
+    //   - If the request includes a resume file → extract from that file
+    //     (anonymous flow, OR a signed-in user uploading an ad-hoc one-off).
+    //   - Otherwise, if the user is signed in and has a stored resume on
+    //     their profile → use the stored text directly. This is the v2
+    //     default for signed-in users.
+    //   - Otherwise → 400 with a link to /account.
+    let resumeText: string | null = null;
+
+    // Inline FileList-ish check — Next 14's formData returns a string when
+    // a file field is empty in some browsers, hence the typeof guard.
+    const hasUploadedFile =
+      resumeFile && typeof resumeFile !== 'string' && (resumeFile as File).name;
+
+    if (hasUploadedFile) {
+      const file = resumeFile as File;
+      if (file.size > 10 * 1024 * 1024) {
+        return NextResponse.json(
+          { error: 'Resume file too large. Max 10MB.' },
+          { status: 400 }
+        );
+      }
+      try {
+        resumeText = await extractTextFromFile(file);
+      } catch (e) {
+        return NextResponse.json(
+          { error: e instanceof Error ? e.message : 'Failed to process resume file' },
+          { status: 400 }
+        );
+      }
+    } else if (isSupabaseConfigured()) {
+      // No file in the request — try the stored-on-profile resume.
+      try {
+        const supabase = createSupabaseServerClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profileResume } = await supabase
+            .from('profiles')
+            .select('resume_text')
+            .eq('id', user.id)
+            .maybeSingle();
+          if (profileResume?.resume_text) {
+            resumeText = profileResume.resume_text;
+          }
+        }
+      } catch {
+        // Fall through to the "no resume" error path below.
+      }
     }
 
-    let resumeText: string;
-    try {
-      resumeText = await extractTextFromFile(resumeFile);
-    } catch (e) {
+    if (!resumeText) {
       return NextResponse.json(
-        { error: e instanceof Error ? e.message : 'Failed to process resume file' },
+        {
+          error:
+            'No resume on file. Sign in and upload one on your account page, or upload a resume with this request.',
+          missingResume: true,
+        },
         { status: 400 }
       );
     }

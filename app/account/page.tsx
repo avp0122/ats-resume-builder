@@ -4,10 +4,18 @@ import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { effectivePlan } from '@/lib/plan';
 import { SIGNED_IN_FREE_GENERATIONS } from '@/lib/pricing';
+import ResumeSettings from '@/components/ResumeSettings';
 
 export const metadata = { title: 'Account — kairesume' };
 
-export default async function AccountPage() {
+interface AccountPageProps {
+  searchParams?: { firstResume?: string };
+}
+
+export default async function AccountPage({ searchParams }: AccountPageProps) {
+  // Set by the home page redirect when a signed-in user lands here
+  // without a stored resume on file (DECISION 024 onboarding nudge).
+  const showFirstResumeBanner = searchParams?.firstResume === '1';
   if (!isSupabaseConfigured()) {
     return (
       <main className="max-w-2xl mx-auto px-4 py-20 text-center">
@@ -24,7 +32,7 @@ export default async function AccountPage() {
 
   let { data: profile } = await supabase
     .from('profiles')
-    .select('plan, pro_until, generations_count, created_at')
+    .select('plan, pro_until, generations_count, created_at, resume_filename, resume_uploaded_at')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -38,7 +46,7 @@ export default async function AccountPage() {
         .upsert({ id: user.id }, { onConflict: 'id' });
       const refreshed = await supabase
         .from('profiles')
-        .select('plan, pro_until, generations_count, created_at')
+        .select('plan, pro_until, generations_count, created_at, resume_filename, resume_uploaded_at')
         .eq('id', user.id)
         .maybeSingle();
       profile = refreshed.data;
@@ -64,6 +72,19 @@ export default async function AccountPage() {
       <header>
         <h1 className="text-3xl font-bold tracking-tight text-white">Account</h1>
       </header>
+
+      {showFirstResumeBanner && !profile?.resume_filename && (
+        <div className="mt-6 rounded-2xl border border-fuchsia-400/30 bg-gradient-to-br from-fuchsia-500/10 via-indigo-500/10 to-sky-400/10 p-5">
+          <h2 className="text-base font-semibold text-white">
+            Upload your resume to get started
+          </h2>
+          <p className="mt-1 text-sm text-white/70">
+            kairesume keeps one resume per account. Drop your PDF or DOCX below — we&apos;ll
+            extract the text once and reuse it every time you generate. You can replace
+            it any time.
+          </p>
+        </div>
+      )}
 
       <section className="mt-6 rounded-3xl border border-white/10 bg-slate-950/60 backdrop-blur-xl p-6">
         <div className="flex items-center justify-between">
@@ -114,6 +135,11 @@ export default async function AccountPage() {
           </Link>
         )}
       </section>
+
+      <ResumeSettings
+        initialFilename={profile?.resume_filename ?? null}
+        initialUploadedAt={profile?.resume_uploaded_at ?? null}
+      />
     </main>
   );
 }

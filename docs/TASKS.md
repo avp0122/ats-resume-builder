@@ -14,7 +14,6 @@ Last updated: 2026-05-26.
 
 ## Next up
 
-- **One-resume-per-profile.** Schema migration adding `resume_text` / `resume_file_path` / `resume_filename` to profiles. Account-page upload widget. Home-page redirects signed-in users to `/account` if no resume on file; otherwise the home flow becomes job-description-only and reuses the stored resume. Cache the extracted text so PDF parsing happens once per upload, not once per generate. Effort: 1 PR (the biggest of the four).
 - **Multi-template picker for the rendered output.** Three variants (Modern / Classic / Compact), all ATS-clean, user picks via a dropdown on the result page. Suggested as an alternative to in-place PDF replacement (declined in DECISION 020). Effort: 1 PR. Files: new `lib/resumeTemplate.ts` variants + a picker in `app/page.tsx`.
 - **Disable Cloudflare's `Content-Signal: search=yes, ai-train=no` injection.** Contradicts our explicit AI allowlist in `robots.txt` (PR #35). Cloudflare dashboard → Security → Bots → AI Audit / Content Signals → toggle off. **Manual config change** — no code, but blocking on user dashboard access.
 - **Submit `/sitemap.xml` to Google Search Console + Bing Webmaster Tools.** Earlier "Couldn't fetch" likely a stale-status artefact (curl confirms Googlebot can reach it). Remove + re-add in Search Console to force a retry.
@@ -43,6 +42,7 @@ Last updated: 2026-05-26.
 
 Newest first. Strikethrough what's no longer relevant.
 
+- **2026-05-26** — One-resume-per-profile (schema migration + account widget + JD-only home flow) · [PR #43, open]
 - **2026-05-26** — Recent-jobs aggregator at `/jobs` (RemoteOK + Remotive, last 24h, France-friendly) · [PR #42, open]
 - **2026-05-26** — Blog at `/blog` with 5 MDX seed posts · [PR #41, open]
 - **2026-05-26** — `'staff'` plan value for comped accounts · [PR #40, open]
