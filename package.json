@@ -19,7 +19,7 @@
     "jszip": "^3.10.1",
     "mammoth": "^1.7.2",
     "next": "14.2.5",
-    "next-mdx-remote": "^4.4.1",
+    "next-mdx-remote": "^6.0.0",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^4.6.82",
     "pdfreader": "^3.0.8",
