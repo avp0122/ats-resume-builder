@@ -206,3 +206,19 @@ Trade-offs:
 - Privacy footer copy updated: "Job descriptions discarded after generation. Stored resume text removable anytime from your account." Honest about what we keep and where the kill switch is.
 
 [`app/page.tsx`](../app/page.tsx) became a Server Component (auth + profile read + redirect); the existing 1295-line client component was renamed to [`app/HomeClient.tsx`](../app/HomeClient.tsx) and now accepts `signedIn` + `storedResumeFilename` props. The upload widget on `/account` is [`components/ResumeSettings.tsx`](../components/ResumeSettings.tsx).
+
+---
+
+### 026 · 2026-05-26 · Active (amends 021)
+
+**`profiles.plan` actually had a CHECK constraint; migration 013 expands it to include `'staff'`**
+
+DECISION 021 stated "no migration required" because the local migrations directory didn't mention a CHECK constraint on `profiles.plan`. That was wrong — the constraint `profiles_plan_check` was added at table creation, before the repo's tracked migrations begin at 002, and restricts the column to `('free', 'pro')`. The first attempt at `update profiles set plan='staff' where id='...'` failed in production with:
+
+```
+ERROR: 23514: new row for relation "profiles" violates check constraint "profiles_plan_check"
+```
+
+[Migration 013](../supabase/migrations/013_profile_plan_allow_staff.sql) drops the old constraint and recreates it as `check (plan in ('free', 'pro', 'staff'))`. Idempotent. Production was patched by running the equivalent SQL by hand before this migration shipped; the migration file exists so any future fresh DB (staging, fork, migrated project) gets the correct constraint without manual intervention.
+
+Lesson for future schema work: when claiming "no migration required" because the column is `text`, also check for CHECK constraints on the column. `\d+ public.profiles` in psql or the Supabase Table Editor's constraint inspector both surface them.
