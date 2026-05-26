@@ -281,6 +281,8 @@ DECISION 027 humanized the prompt but the cover letter still anchored entirely o
 - Second LLM call fails or returns malformed JSON → keep first-pass cover letter.
 - Any exception in the enrichment block is caught and logged — never blocks the main response.
 
+**429 specifically (free-tier quota exhausted):** the helper logs loudly (not silently) so you can spot it in Vercel function logs without dev-mode flags — the message is `Tavily rate limit hit (429) for "{company}" — falling back to JD-only cover letter. Free-tier quota exhausted or per-second cap exceeded.` When this fires, the user still gets the **humanized JD-only cover letter** from the first-pass `generateATSContent` (the humanization in DECISION 027 is the floor — every cover letter shipped is at least this good even without Tavily). 401/403 errors get a similar dedicated message pointing at the API key.
+
 **Cost:** ~+1 Tavily query + ~+1k Groq tokens per generation. Tavily free tier covers a small product; Groq token cost stays under the 12K TPM budget (first call ≈ 7K, second call ≈ 1k).
 
 **TPM consideration:** the second call is small enough that we don't expect new TPM breaches. If we ever see them, the simplest mitigation is to gate enrichment behind `plan === 'pro' || plan === 'staff'` (only paying / comped users get the deeper research) — currently universal because the cost is low.
