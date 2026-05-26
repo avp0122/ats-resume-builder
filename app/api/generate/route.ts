@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateATSContent } from '@/lib/llm';
+import { generateATSContent, regenerateCoverLetterWithContext } from '@/lib/llm';
+import { isCompanyResearchConfigured, researchCompany } from '@/lib/companyResearch';
 import {
   validateInputs,
   createContentHash,
@@ -245,6 +246,43 @@ export async function POST(request: NextRequest) {
       result = cached.result;
     } else {
       result = await generateATSContent(compressedJd, compressedResume);
+
+      // Optional second pass: enrich the cover letter with external
+      // research on the target company via Tavily. Fail-soft — if the
+      // research call fails, the regenerate call fails, or the API key
+      // isn't configured, we keep the original cover letter and the
+      // user gets the JD-only version.
+      //
+      // Runs BEFORE we cache so the enriched cover letter is what gets
+      // cached + returned on cache hits.
+      if (result.jobCompany && isCompanyResearchConfigured()) {
+        try {
+          const ctx = await researchCompany(result.jobCompany);
+          if (ctx && ctx.summary) {
+            const newCover = await regenerateCoverLetterWithContext({
+              jd: compressedJd,
+              resumeHtml: result.resume,
+              jobRole: result.jobRole,
+              jobCompany: result.jobCompany,
+              candidateName: result.personalInfo.fullName || '',
+              companyContext: ctx.summary,
+            });
+            if (newCover) {
+              result = { ...result, coverLetter: newCover };
+              if (process.env.NODE_ENV !== 'production') {
+                console.log(
+                  `Cover letter enriched with Tavily research for "${ctx.company}" (${ctx.summary.length} chars context, source: ${ctx.sourceUrl ?? 'n/a'}).`
+                );
+              }
+            }
+          }
+        } catch (e) {
+          // Belt and braces — the helpers already fail-soft, but never
+          // let an exception here block the main generation flow.
+          console.error('Cover-letter enrichment failed (non-fatal):', e);
+        }
+      }
+
       cache.set(cacheKey, { result, timestamp: Date.now() });
     }
 
