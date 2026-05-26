@@ -256,3 +256,33 @@ Fixes:
 - New [`normalizeCoverLetterHtml()`](../lib/llm.ts) in `lib/llm.ts` runs on every LLM response. If the body has ≥2 well-formed `<p>` tags AND no monolithic single-paragraph case, leave it alone (with `<br><br>` → `</p><p>` cleanup). Otherwise strip all tags, split on blank lines / single newlines / sentence-ends as progressive fallbacks, and rebuild as proper `<p>…</p>` blocks. Always produces something copyable.
 - `renderCoverLetterDocument` rewritten to emit a single-line HTML string with no source indentation.
 - [`htmlToPlainText`](../components/ResumePreview.tsx) hardened to inject explicit `\n\n` at block boundaries before letting the browser flatten — no longer depends on `innerText`'s browser-specific layout-aware whitespace insertion.
+
+---
+
+### 028 · 2026-05-26 · Active
+
+**Cover letter enriched with external company research via Tavily Search API**
+
+DECISION 027 humanized the prompt but the cover letter still anchored entirely on whatever the JD said about the company — which is usually marketing copy or boilerplate. To produce a letter that actually shows the candidate knows what the company *does*, we now do a second LLM pass enriched with fresh search results.
+
+**Architecture:** two-pass. First pass (existing) generates resume + first cover letter + scores. If `TAVILY_API_KEY` is set AND the model extracted a non-empty `jobCompany`, we then:
+1. Call [`researchCompany(jobCompany)`](../lib/companyResearch.ts) — POSTs to `https://api.tavily.com/search` with `search_depth: 'basic'`, `max_results: 3`, `include_answer: true`. 3.5s timeout. Returns 1-3 concatenated snippets capped at 600 chars.
+2. Call [`regenerateCoverLetterWithContext()`](../lib/llm.ts) — a shorter second LLM pass using [`getCoverLetterPrompt()`](../lib/prompts.ts) that re-grounds paragraph 1 on a fact from the Tavily summary (product name, customer, mission, recent move) instead of just the JD's self-description.
+3. Swap the new cover letter into the result before caching.
+
+**Why Tavily over alternatives:**
+- Free tier: 1000 queries/month — enough for a small product.
+- Designed for AI agents: results include synthesised `answer` field that often replaces our snippet-concatenation step entirely.
+- One HTTP call, no client setup, no LangChain.
+
+**Fail-soft at every step:**
+- No `TAVILY_API_KEY` → skip enrichment silently (production-safe to deploy without the key).
+- Tavily HTTP error / timeout / empty result → keep first-pass cover letter.
+- Second LLM call fails or returns malformed JSON → keep first-pass cover letter.
+- Any exception in the enrichment block is caught and logged — never blocks the main response.
+
+**429 specifically (free-tier quota exhausted):** the helper logs loudly (not silently) so you can spot it in Vercel function logs without dev-mode flags — the message is `Tavily rate limit hit (429) for "{company}" — falling back to JD-only cover letter. Free-tier quota exhausted or per-second cap exceeded.` When this fires, the user still gets the **humanized JD-only cover letter** from the first-pass `generateATSContent` (the humanization in DECISION 027 is the floor — every cover letter shipped is at least this good even without Tavily). 401/403 errors get a similar dedicated message pointing at the API key.
+
+**Cost:** ~+1 Tavily query + ~+1k Groq tokens per generation. Tavily free tier covers a small product; Groq token cost stays under the 12K TPM budget (first call ≈ 7K, second call ≈ 1k).
+
+**TPM consideration:** the second call is small enough that we don't expect new TPM breaches. If we ever see them, the simplest mitigation is to gate enrichment behind `plan === 'pro' || plan === 'staff'` (only paying / comped users get the deeper research) — currently universal because the cost is low.
