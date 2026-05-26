@@ -238,3 +238,21 @@ ERROR: 23514: new row for relation "profiles" violates check constraint "profile
 
 Lesson for future schema work: when claiming "no migration required" because the column is `text`, also check for CHECK constraints on the column. `\d+ public.profiles` in psql or the Supabase Table Editor's constraint inspector both surface them.
 
+---
+
+### 027 · 2026-05-26 · Active
+
+**Cover letter: humanized prompt + defensive `<p>` normalization + clean copy output**
+
+Two bugs in one feature:
+
+**Output was corporate-template-flavored.** The original cover-letter section of [`lib/prompts.ts`](../lib/prompts.ts) just said "3-4 short paragraphs in `<p>` tags." Llama 3.3 reliably produced something like "I am excited to apply for the X position at Y, where I can leverage my experience in… I am confident that my skills make me a strong fit… Thank you for considering my application." Generic, filler-heavy, nothing about the specific company. Tightened the prompt with: a banned-phrase list (every common corporate-template tell), a forced structure (Hook → Proof → Bridge → Close), required specificity (at least one proper noun from the JD in paragraph 1, one specific story + number from the resume in paragraph 2), and a 280-word cap.
+
+**Output didn't survive Copy-to-clipboard.** User report: pasted cover letter was all run-on with no paragraph breaks, plus mysterious 2- and 4-space leading indents per line. Two causes:
+1. The LLM was sometimes returning the whole body as one giant `<p>` (or `<br>`-separated lines) instead of one `<p>` per paragraph, despite the prompt saying otherwise. Without `<p>` boundaries, the browser's `innerText` produced one run-on string.
+2. The HTML template literal in [`lib/resumeTemplate.ts:renderCoverLetterDocument`](../lib/resumeTemplate.ts) had source-code indentation (2 spaces per nesting level). Those source-side spaces leaked into `innerText` output in some browser contexts (notably Safari's reading of detached DOM nodes).
+
+Fixes:
+- New [`normalizeCoverLetterHtml()`](../lib/llm.ts) in `lib/llm.ts` runs on every LLM response. If the body has ≥2 well-formed `<p>` tags AND no monolithic single-paragraph case, leave it alone (with `<br><br>` → `</p><p>` cleanup). Otherwise strip all tags, split on blank lines / single newlines / sentence-ends as progressive fallbacks, and rebuild as proper `<p>…</p>` blocks. Always produces something copyable.
+- `renderCoverLetterDocument` rewritten to emit a single-line HTML string with no source indentation.
+- [`htmlToPlainText`](../components/ResumePreview.tsx) hardened to inject explicit `\n\n` at block boundaries before letting the browser flatten — no longer depends on `innerText`'s browser-specific layout-aware whitespace insertion.

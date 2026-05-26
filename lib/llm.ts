@@ -42,6 +42,106 @@ export const EMPTY_PERSONAL_INFO: PersonalInfo = {
   socialLinks: {},
 };
 
+/**
+ * Defensive post-processor for the cover letter body the LLM returns.
+ *
+ * The prompt asks for exactly one <p>…</p> per paragraph, but Llama 3.3
+ * sometimes ignores the rule and returns:
+ *   - One giant <p>…</p> with all sentences concatenated (no breaks).
+ *   - Plain text separated by \n\n (no tags at all).
+ *   - <br>-separated lines instead of <p> boundaries.
+ *   - A mix.
+ *
+ * Without proper <p> boundaries, the browser's innerText conversion in
+ * components/ResumePreview.tsx:htmlToPlainText smushes everything into
+ * one run-on string when the user copies — which is what produced the
+ * "Dear Hiring Manager,I am excited to apply…With a strong…" bug
+ * reported in production.
+ *
+ * Strategy: if the body looks well-formed (≥2 <p> tags AND the FIRST <p>
+ * isn't an everything-glued-together monolith), trust the model. Otherwise
+ * strip all tags, split on blank lines (or sentence boundaries as a last
+ * resort), and rebuild proper <p>…</p> blocks.
+ */
+function normalizeCoverLetterHtml(raw: string): string {
+  if (!raw) return raw;
+  let body = raw.trim();
+
+  // Strip outer wrapping that some models add (<html>, <body>, etc).
+  body = body
+    .replace(/<\/?html[^>]*>/gi, '')
+    .replace(/<\/?body[^>]*>/gi, '')
+    .replace(/<\/?main[^>]*>/gi, '')
+    .trim();
+
+  // Count <p> tags to assess structure quality.
+  const pCount = (body.match(/<p\b/gi) || []).length;
+
+  // Heuristic: a single <p> containing 800+ chars is almost certainly the
+  // "all paragraphs glued into one" failure mode. Treat that as malformed.
+  const looksMonolithic =
+    pCount === 1 && body.replace(/<[^>]+>/g, '').length > 600;
+
+  if (pCount >= 2 && !looksMonolithic) {
+    // Looks reasonable. Still normalise <br>-pairs that some models use
+    // between sentences inside a single <p> — those don't survive copy.
+    return body.replace(/(\s*<br\s*\/?>\s*){2,}/gi, '</p><p>');
+  }
+
+  // Otherwise: rebuild from scratch. Drop all tags, split into chunks.
+  const plain = body
+    // Convert <br> + </p><p> + closing-then-opening into newlines.
+    .replace(/<\/p\s*>\s*<p[^>]*>/gi, '\n\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+
+  // Prefer blank-line splits. If none, fall back to single-newlines (one
+  // paragraph per line). If neither, split on sentence-end + capital-start
+  // as a last resort so the "all one line" case still produces something
+  // copyable.
+  let chunks: string[] = plain
+    .split(/\n{2,}/)
+    .map((s) => s.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  if (chunks.length < 2) {
+    chunks = plain
+      .split(/\n+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  if (chunks.length < 2) {
+    // Sentence-end heuristic — matches ". A", "? T", "! M". Conservative;
+    // won't split inside abbreviations like "Mr. Smith" because the next
+    // char would be lowercase. Imperfect on edge cases but vastly better
+    // than serving one wall of text.
+    chunks = plain
+      .split(/(?<=[.?!])\s+(?=[A-Z])/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  if (chunks.length === 0) return body; // give up, return whatever we had
+
+  return chunks
+    .map(
+      (c) =>
+        `<p>${c
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')}</p>`
+    )
+    .join('');
+}
+
 function normalizePersonalInfo(raw: unknown): PersonalInfo {
   const info = (raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}) as Record<string, unknown>;
   const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
@@ -182,7 +282,7 @@ function parseJSONResponse(text: string): ATSGenerationResult {
       jobRole: safeStr(parsed.jobRole),
       jobCompany: safeStr(parsed.jobCompany),
       resume: String(parsed.resume),
-      coverLetter: String(parsed.coverLetter),
+      coverLetter: normalizeCoverLetterHtml(String(parsed.coverLetter)),
       originalScore,
       score,
       matchedKeywords: toStringArray(parsed.matchedKeywords),
