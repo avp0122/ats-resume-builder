@@ -1,27 +1,44 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { listJobs, type Job } from '@/lib/jobs';
 import RefreshJobsButton from '@/components/RefreshJobsButton';
+import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase/server';
 
 const SITE_URL = 'https://kairesume.fit';
 
+// Staff-only — DECISION 029. The page is hidden from search engines and from
+// the public sitemap. Non-staff users get a real 404 (not a "you don't have
+// access" message), so the page's existence isn't surfaced.
 export const metadata: Metadata = {
-  title: 'Fresh remote DevOps, SRE & Cloud jobs (last 24h) — global, France-friendly',
-  description:
-    'Hand-filtered list of DevOps, SRE, Cloud, Platform and Kubernetes engineer jobs posted in the last 24 hours, with global remote scope (open to candidates in France). Updated daily.',
-  alternates: { canonical: `${SITE_URL}/jobs` },
-  openGraph: {
-    title: 'Fresh remote DevOps / SRE / Cloud jobs — last 24h, global',
-    description:
-      'DevOps, SRE, Cloud, Platform and Kubernetes engineer jobs posted in the last 24h, open to candidates in France or worldwide. Updated daily.',
-    url: `${SITE_URL}/jobs`,
-    type: 'website',
-  },
+  title: 'Jobs (staff)',
+  robots: { index: false, follow: false },
 };
 
-// Static daily refresh per user spec: hit the source APIs at most once a day.
-// Both APIs explicitly recommend ≤ 4 fetches/day; 1/day is well within ToS.
-export const revalidate = 86400;
+// Force dynamic — we read cookies for auth on every request. The data
+// fetches in lib/jobs.ts still cache for 24h via their own next.tags,
+// so making the page dynamic doesn't re-hit Remote OK / Remotive per
+// request.
+export const dynamic = 'force-dynamic';
+
+async function isStaffUser(): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  try {
+    const supabase = createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return false;
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('plan')
+      .eq('id', user.id)
+      .maybeSingle();
+    return profile?.plan === 'staff';
+  } catch {
+    return false;
+  }
+}
 
 function formatHoursAgo(h: number): string {
   if (h < 1) return 'just posted';
@@ -56,6 +73,12 @@ function SourceBadge({ source }: { source: Job['source'] }) {
 }
 
 export default async function JobsPage() {
+  // Staff-only gate. notFound() renders the standard 404 page so the
+  // existence of /jobs isn't disclosed to non-staff visitors.
+  if (!(await isStaffUser())) {
+    notFound();
+  }
+
   const jobs = await listJobs();
   const generatedAt = new Date();
 
