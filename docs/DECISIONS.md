@@ -209,6 +209,21 @@ Trade-offs:
 
 ---
 
+### 025 · 2026-05-26 · Active
+
+**Staff users can force-refresh `/jobs` immediately (cache-invalidation, not bypass)**
+
+The `/jobs` page is ISR-cached for 24h to stay inside Remote OK / Remotive's "max ~4 fetches/day each" ToS guidance (DECISION 023). For internal users on the `'staff'` plan (DECISION 021) we wanted a manual override — "I'm doing a demo, pull fresh data now" — without giving every visitor that power (which would burn through the daily quota in minutes).
+
+Implementation in three pieces:
+1. The two source fetches in [`lib/jobs.ts`](../lib/jobs.ts) now carry `next.tags: ['jobs']` so they're individually invalidatable.
+2. [`app/jobs/actions.ts:refreshJobs()`](../app/jobs/actions.ts) is a Server Action that re-verifies the caller is staff, then calls `revalidateTag('jobs')` + `revalidatePath('/jobs')`. Non-staff get a `{ ok: false, reason: 'not-staff' }` no-op.
+3. [`components/RefreshJobsButton.tsx`](../components/RefreshJobsButton.tsx) is a client component that polls [`/api/me/staff`](../app/api/me/staff/route.ts) on mount and only renders if `isStaff === true`. Clicking calls the server action and `router.refresh()`'s on success.
+
+The staff check happens on the server in `refreshJobs()` — the client-side rendering gate is purely UX. Tampering with the rendered HTML to expose the button doesn't bypass the quota protection.
+
+---
+
 ### 026 · 2026-05-26 · Active (amends 021)
 
 **`profiles.plan` actually had a CHECK constraint; migration 013 expands it to include `'staff'`**
@@ -222,3 +237,4 @@ ERROR: 23514: new row for relation "profiles" violates check constraint "profile
 [Migration 013](../supabase/migrations/013_profile_plan_allow_staff.sql) drops the old constraint and recreates it as `check (plan in ('free', 'pro', 'staff'))`. Idempotent. Production was patched by running the equivalent SQL by hand before this migration shipped; the migration file exists so any future fresh DB (staging, fork, migrated project) gets the correct constraint without manual intervention.
 
 Lesson for future schema work: when claiming "no migration required" because the column is `text`, also check for CHECK constraints on the column. `\d+ public.profiles` in psql or the Supabase Table Editor's constraint inspector both surface them.
+
