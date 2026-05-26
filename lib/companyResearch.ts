@@ -94,8 +94,25 @@ export async function researchCompany(company: string): Promise<CompanyContext |
     });
 
     if (!res.ok) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.warn('Tavily HTTP error:', res.status, await res.text().catch(() => ''));
+      // 429 is the rate-limit / quota-exhausted signal. Log it loudly even
+      // in production so you can see when the Tavily free tier is exhausted
+      // and decide whether to upgrade. The downstream effect is automatic:
+      // the calling code keeps the first-pass (humanized JD-only) cover
+      // letter from generateATSContent and the user gets that instead.
+      if (res.status === 429) {
+        console.warn(
+          `Tavily rate limit hit (429) for "${trimmed}" — falling back to JD-only cover letter. Free-tier quota exhausted or per-second cap exceeded.`
+        );
+      } else if (res.status === 401 || res.status === 403) {
+        console.warn(
+          `Tavily auth error (${res.status}) — check TAVILY_API_KEY. Falling back to JD-only cover letter.`
+        );
+      } else if (process.env.NODE_ENV !== 'production') {
+        console.warn(
+          'Tavily HTTP error:',
+          res.status,
+          await res.text().catch(() => '')
+        );
       }
       return null;
     }
