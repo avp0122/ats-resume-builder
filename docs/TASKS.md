@@ -42,7 +42,8 @@ Last updated: 2026-05-26.
 
 Newest first. Strikethrough what's no longer relevant.
 
-- **2026-05-26** — Staff-only "Refresh now" button on `/jobs` (cache invalidation) · PR pending
+- **2026-05-26** — Migration 013: expand `profiles_plan_check` to include `'staff'` (amends DECISION 021) · PR pending
+- **2026-05-26** — Staff-only "Refresh now" button on `/jobs` · [PR #45, open]
 - **2026-05-26** — Promotion of staff-plan + blog + jobs + resume-per-profile to master · [PR #44, merged]
 - **2026-05-26** — One-resume-per-profile (schema migration + account widget + JD-only home flow) · [PR #43, merged via #44]
 - **2026-05-26** — Recent-jobs aggregator at `/jobs` (RemoteOK + Remotive, last 24h, France-friendly) · [PR #42, merged via #44]
