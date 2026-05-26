@@ -208,3 +208,4 @@ Required in production (set in Vercel dashboard):
 | `OWNER_USDT_ERC20_ADDRESS` | EVM 0x wallet receiving USDT (ERC-20) |
 | `ETHSCAN_API_KEY` (or `ETHERSCAN_API_KEY`, `BSCSCAN_API_KEY`) | Etherscan V2 unified API key for ERC-20 verification |
 | `TRONGRID_API_KEY` | Optional; lifts rate limits on TRC-20 verification |
+| `TAVILY_API_KEY` | Optional; enables external company research for the cover letter. Without it the cover letter is generated from the JD alone. Free tier: 1000 queries/month. |

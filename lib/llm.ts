@@ -370,8 +370,68 @@ async function callGroq(prompt: string, maxTokens: number): Promise<GroqCallResu
 }
 
 /**
+ * Regenerate ONLY the cover letter, using external company research as
+ * additional grounding. Called as a second, shorter LLM pass after the
+ * main `generateATSContent` succeeds AND `companyContext` is available
+ * (Tavily configured + research succeeded + jobCompany non-empty).
+ *
+ * Returns the new coverLetter HTML, already passed through
+ * `normalizeCoverLetterHtml` so paragraph boundaries are guaranteed.
+ *
+ * Errors return `null` instead of throwing — callers fall back to the
+ * first-pass cover letter. We never block generation on this.
+ */
+export async function regenerateCoverLetterWithContext(args: {
+  jd: string;
+  resumeHtml: string;
+  jobRole: string;
+  jobCompany: string;
+  candidateName: string;
+  companyContext: string;
+}): Promise<string | null> {
+  try {
+    const { getCoverLetterPrompt } = await import('./prompts');
+    const prompt = getCoverLetterPrompt(args);
+
+    // Small output ceiling: cover letter body is capped at ~280 words
+    // ≈ ~450 tokens. 1200 leaves headroom for JSON wrapping.
+    const { content } = await callGroq(prompt, 1200);
+
+    // Parse the small JSON envelope.
+    let body: unknown;
+    try {
+      const parsed = JSON.parse(content);
+      body = (parsed as Record<string, unknown>).coverLetter;
+    } catch {
+      // Sometimes the model wraps in markdown fences despite the prompt.
+      const stripped = content
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim();
+      try {
+        const parsed = JSON.parse(stripped);
+        body = (parsed as Record<string, unknown>).coverLetter;
+      } catch {
+        return null;
+      }
+    }
+
+    if (typeof body !== 'string' || !body.trim()) return null;
+    return normalizeCoverLetterHtml(body);
+  } catch (e) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        'regenerateCoverLetterWithContext failed:',
+        e instanceof Error ? e.message : String(e)
+      );
+    }
+    return null;
+  }
+}
+
+/**
  * Generate ATS content with retry logic
- * 
+ *
  * @param jd - Job description text
  * @param resume - Original resume text
  * @returns Promise resolving to ATS-optimized resume and cover letter
