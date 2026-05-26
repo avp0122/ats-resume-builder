@@ -171,3 +171,11 @@ User asked whether we could replace text in the original uploaded PDF in-place s
 **Third stored `plan` value: `'staff'` — unconditional Pro for comped accounts**
 
 Need a way to grant unlimited generations to specific users (staff, friends-of-the-house, manual comps) without setting a sentinel future `pro_until` date. Chose to extend `effectivePlan()` in [`lib/plan.ts`](../lib/plan.ts) to map `plan === 'staff'` → effective `'pro'` unconditionally. Three reasons over the sentinel-date approach: (1) queryable as a distinct cohort in the DB (`where plan = 'staff'`), so analytics on "non-paying-but-unlimited" stay clean; (2) no risk of a far-future date silently expiring; (3) `'staff'` is deliberately NOT added to the purchasable `PlanId` union in `pricing.ts` — the UI cannot offer it. Grant via SQL: `update profiles set plan='staff' where id='<uuid>'`. Revoke by setting back to `'free'`. No migration required (the `plan` column is free `text`, no CHECK constraint).
+
+---
+
+### 022 · 2026-05-26 · Active
+
+**Blog at `/blog`: MDX files in `content/blog/*.mdx`, rendered server-side via `next-mdx-remote/rsc`**
+
+Need a blog for SEO / AEO / GEO surface area — practical guides on ATS parsing, DevOps keywords, remote applications. Chose MDX-files-in-repo over a Supabase-backed CMS because: (1) every URL is statically rendered HTML at build/ISR time (great SEO, near-zero runtime cost); (2) posts are git-tracked with proper review, no admin UI to build or secure; (3) MDX leaves the door open to embed CTA components inside posts later without rewriting the engine. Implementation uses `next-mdx-remote@^4.4.1` (the App-Router-compatible major; v4's `/rsc` subpath runs entirely as a Server Component, zero client JS for post bodies) + `gray-matter` for frontmatter. Routes: `/blog` (index) + `/blog/[slug]` (detail), both with `revalidate = 86400` for ISR. Sitemap dynamically enumerates posts via [`lib/blog.ts:listPosts()`](../lib/blog.ts). JSON-LD: `Blog` on the index, `BlogPosting` on each post. Five seed posts ship in this PR covering ATS parsing, DevOps keywords, cover letters, France→remote, and Canva/Cake-style design pitfalls.

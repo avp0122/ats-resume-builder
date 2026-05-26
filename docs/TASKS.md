@@ -14,7 +14,6 @@ Last updated: 2026-05-26.
 
 ## Next up
 
-- **Blog at `/blog`.** MDX-backed static blog (`content/blog/*.mdx`), index + detail routes, ~5 seed posts (ATS, keywords, DevOps remote, cover letter, France→remote). Wires into `app/sitemap.ts`. Effort: 1 PR.
 - **Recent jobs at `/jobs`.** ISR (24h revalidate) page pulling RemoteOK + Remotive APIs, filtered to DevOps / Cloud / SRE / Platform / Kubernetes posted <24h, global-remote, France-friendly. Just links — click takes user to the apply page. Effort: 1 PR.
 - **One-resume-per-profile.** Schema migration adding `resume_text` / `resume_file_path` / `resume_filename` to profiles. Account-page upload widget. Home-page redirects signed-in users to `/account` if no resume on file; otherwise the home flow becomes job-description-only and reuses the stored resume. Cache the extracted text so PDF parsing happens once per upload, not once per generate. Effort: 1 PR (the biggest of the four).
 - **Multi-template picker for the rendered output.** Three variants (Modern / Classic / Compact), all ATS-clean, user picks via a dropdown on the result page. Suggested as an alternative to in-place PDF replacement (declined in DECISION 020). Effort: 1 PR. Files: new `lib/resumeTemplate.ts` variants + a picker in `app/page.tsx`.
@@ -45,6 +44,9 @@ Last updated: 2026-05-26.
 
 Newest first. Strikethrough what's no longer relevant.
 
+- **2026-05-26** — Blog at `/blog` with 5 MDX seed posts · [PR #41, open]
+- **2026-05-26** — `'staff'` plan value for comped accounts · [PR #40, open]
+- **2026-05-26** — `docs/` directory + ARCHITECTURE / DECISIONS / TASKS / summaries · [PR #39, open]
 - **2026-05-18** — Person JSON-LD for founder · [PR #36, merged]
 - **2026-05-17** — Explicit AI crawler allowlist in robots.txt · [PR #35, merged]
 - **2026-05-17** — Shorter `<title>` (≤60 chars for SERP) · [PR #34, merged]

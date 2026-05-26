@@ -1,0 +1,113 @@
+---
+title: "DevOps, SRE & Cloud Resume Keywords That Get Past ATS in 2026"
+description: "The keywords ATS platforms actually look for in 2026 DevOps, SRE, Platform, and Cloud Engineer roles — with how to use each one in a bullet without sounding like a buzzword soup."
+date: "2026-05-23"
+tags: ["devops", "sre", "keywords", "ats"]
+readingMinutes: 8
+---
+
+If you're applying to DevOps, SRE, Platform Engineering, or Cloud roles in 2026, your resume is competing in one of the most heavily filtered hiring pools on the market. Recruiters often paste 30–50 required tools into the requisition, and the ATS ranks every applicant on overlap.
+
+This post lists the **specific** keywords that show up most often in 2026 job ads in these tracks, grouped by category, with a one-line example of how to use each in a results-oriented bullet.
+
+## Container orchestration
+
+- **Kubernetes** (always spelled in full — `K8s` matches in most parsers but not all).
+- **Helm** charts, `Kustomize`, **Argo CD** / Flux for GitOps.
+- **Docker** still appears as a baseline — assume it's expected.
+
+Example: *Operated a 60-node Kubernetes cluster running 200+ services; introduced Argo CD for GitOps, reducing manual deploys from 40/week to 3.*
+
+## Infrastructure as Code
+
+- **Terraform** is the dominant signal — appears in ~85% of 2026 DevOps ads we've sampled.
+- **OpenTofu** is rising fast for newer postings after the 2024 Terraform license change.
+- **Pulumi**, **CloudFormation**, **Ansible**, **CDK** (AWS) and **CDKTF**.
+
+Example: *Wrote 12 Terraform modules covering VPC, EKS, RDS, and IAM; ran them through `tflint` + `terraform-compliance` in CI to enforce tagging and least-privilege.*
+
+## Cloud platforms
+
+- **AWS** is the default expectation for US/global roles. List specific services: **EKS**, **ECS**, **Lambda**, **S3**, **RDS**, **DynamoDB**, **CloudWatch**, **IAM**, **VPC**, **Route 53**.
+- **GCP** for many startups and ML-heavy orgs. List: **GKE**, **Cloud Run**, **BigQuery**, **Cloud SQL**.
+- **Azure** is common in enterprise: **AKS**, **Azure Functions**, **Cosmos DB**, **Entra ID**.
+- Multi-cloud is a positive signal but only if it's true.
+
+Example: *Migrated 30 microservices from EC2 to AWS EKS with VPC peering across us-east-1 and eu-west-1, cutting cross-region latency 38%.*
+
+## Observability
+
+This is the section that quietly disqualifies a lot of otherwise-strong candidates. Recruiters now treat observability as table-stakes, not nice-to-have.
+
+- **Prometheus** + **Grafana** is the open-source default.
+- **Datadog**, **New Relic**, **Honeycomb**, **Splunk** for vendor stacks.
+- **OpenTelemetry** is now a dominant requirement — list it if you've actually instrumented services.
+- **PagerDuty**, **Opsgenie** for incident tooling.
+- **SLO** / **SLI** / **error budget** as concepts, not just acronyms.
+
+Example: *Defined SLOs (99.9% availability, P99 < 200ms) for 8 customer-facing services; wired error-budget burn alerts into PagerDuty via OpenTelemetry → Prometheus → Alertmanager.*
+
+## CI/CD
+
+- **GitHub Actions** is the most-cited CI in 2026.
+- **GitLab CI**, **Jenkins** (still very common in enterprise), **CircleCI**, **Buildkite**.
+- **Argo Workflows** for K8s-native pipelines.
+
+Example: *Cut build time from 18 min → 4 min by parallelising test shards in GitHub Actions and caching `npm ci` + Docker layers via the `actions/cache` v4 backend.*
+
+## Security & policy
+
+This is where senior DevOps / SRE roles diverge from mid-level. List these only if you've genuinely worked with them — recruiters often probe in interviews.
+
+- **OPA** / **Rego** for policy-as-code.
+- **Kyverno** for K8s-native admission control.
+- **Vault** (HashiCorp) for secrets, or AWS Secrets Manager / GCP Secret Manager.
+- **SOC 2**, **ISO 27001**, **HIPAA**, **PCI-DSS** for compliance signals.
+- **Trivy**, **Snyk**, **Grype** for image scanning.
+- **Zero Trust**, **service mesh** (Istio, Linkerd) for network policy.
+
+Example: *Implemented OPA/Rego policies blocking `:latest` image tags and privileged pods cluster-wide; passed SOC 2 Type II audit with zero infrastructure findings.*
+
+## Programming languages
+
+DevOps in 2026 expects more than shell-scripting:
+
+- **Go** is the dominant systems language for the role.
+- **Python** for tooling, automation, data work.
+- **Bash** is assumed, doesn't need its own bullet unless the role is heavily ops-focused.
+- **TypeScript** for CDK / Pulumi work.
+- **Rust** is appearing more in lower-level infra teams.
+
+## SRE-specific signals
+
+If the role title includes SRE, recruiters specifically scan for:
+
+- **Postmortem** culture — write the word "postmortem" or "incident review" in at least one bullet.
+- **MTTR** / **MTTD** with numbers.
+- **Toil reduction** is the classic SRE phrasing.
+- **Chaos engineering** — **Chaos Mesh**, **Gremlin**, **Litmus**.
+- **Load testing** — **k6**, **Locust**, **JMeter**.
+
+Example: *Led blameless postmortems for 14 incidents; identified shared root cause across three (slow secrets fetch), shipped a fix that dropped MTTR from 47 → 11 minutes.*
+
+## Platform Engineering signals
+
+A growing job category in 2026, distinct from classic DevOps. Look for:
+
+- **Internal Developer Platform** (IDP), **Backstage** (Spotify), **Port**, **Cortex**.
+- **Golden paths**, **paved roads** as terminology.
+- **Self-service** infrastructure and **developer experience** (DX).
+
+## How to use these without sounding generic
+
+The fastest way to dilute keywords is to dump them into a "Skills" section as a flat list. Recruiters skim past those. The keywords that actually count are the ones embedded in your **bullet points**, paired with an outcome.
+
+Bad: *Skills: Kubernetes, Terraform, Prometheus, AWS, GitHub Actions, Python.*
+
+Better, in a job entry: *Migrated 30 services from ECS to **Kubernetes** on **AWS EKS** using **Terraform**, with **Prometheus** + **OpenTelemetry** observability and **GitHub Actions**-driven GitOps. Cut deploy time from 12 min → 90 sec.*
+
+The first form passes a keyword scan but conveys nothing. The second gives the parser the same keywords *and* gives the recruiter a reason to read further.
+
+---
+
+If you want this done against a specific job ad — keywords matched, bullets rewritten, ATS score before-and-after — [paste it into kairesume](/). It's free for your first generation.
