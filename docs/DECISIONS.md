@@ -179,3 +179,30 @@ Need a way to grant unlimited generations to specific users (staff, friends-of-t
 **Blog at `/blog`: MDX files in `content/blog/*.mdx`, rendered server-side via `next-mdx-remote/rsc`**
 
 Need a blog for SEO / AEO / GEO surface area — practical guides on ATS parsing, DevOps keywords, remote applications. Chose MDX-files-in-repo over a Supabase-backed CMS because: (1) every URL is statically rendered HTML at build/ISR time (great SEO, near-zero runtime cost); (2) posts are git-tracked with proper review, no admin UI to build or secure; (3) MDX leaves the door open to embed CTA components inside posts later without rewriting the engine. Implementation uses `next-mdx-remote@^4.4.1` (the App-Router-compatible major; v4's `/rsc` subpath runs entirely as a Server Component, zero client JS for post bodies) + `gray-matter` for frontmatter. Routes: `/blog` (index) + `/blog/[slug]` (detail), both with `revalidate = 86400` for ISR. Sitemap dynamically enumerates posts via [`lib/blog.ts:listPosts()`](../lib/blog.ts). JSON-LD: `Blog` on the index, `BlogPosting` on each post. Five seed posts ship in this PR covering ATS parsing, DevOps keywords, cover letters, France→remote, and Canva/Cake-style design pitfalls.
+
+---
+
+### 023 · 2026-05-26 · Active
+
+**Recent-jobs aggregator at `/jobs`, ISR-cached daily, sourced from RemoteOK + Remotive**
+
+User-side intent: an applicant in France, looking for global-remote DevOps / SRE / Cloud roles posted in the last 24 hours. Considered building our own scraper or paying for an API; chose to aggregate two free public APIs (RemoteOK + Remotive) server-side and cache the page with `revalidate = 86400` (24h). This satisfies both APIs' ToS guidance ("max ~4 fetches/day" each — we do 1) and keeps render cost near-zero. Filter pipeline in [`lib/jobs.ts`](../lib/jobs.ts): (1) role regex `devops|sre|site reliability|cloud|platform|kubernetes|infrastructure`; (2) posted ≤ 24h; (3) `candidate_required_location` doesn't strictly geo-lock away from France (we reject `*Only` phrases but accept Worldwide / Europe / France / unspecified). Two-source fan-out via `Promise.all` so one source failing doesn't blank the page; dedupe by `company|title`. ToS compliance: per-row `Source: Remote OK / Remotive` badge + a footer attribution line + outbound `target=_blank rel=noopener` (deliberately NOT `nofollow` per RemoteOK's request). Empty-state shows when no fresh matches, linking to the France→remote blog post and the generator. The page is intentionally just links — clicking takes the user to the source listing to apply, kairesume does not host applications.
+
+---
+
+### 024 · 2026-05-26 · Active
+
+**One resume per signed-in profile; generation becomes job-description-only**
+
+Reframed the signed-in flow. Old model: upload a resume on every generation. New model: signed-in users upload their resume **once** on `/account`, the extracted text is stored on the profile, and per-generation they only paste the job description. The home page hides the upload UI for signed-in users with a stored resume; it redirects to `/account?firstResume=1` for signed-in users without one. Anonymous users still upload per-generation (no profile to attach to).
+
+Schema: migration 012 adds `profiles.resume_text` (TEXT), `profiles.resume_filename` (TEXT, display-only), `profiles.resume_uploaded_at` (TIMESTAMPTZ). Only the extracted text is stored — the original PDF/DOCX is dropped after extraction at `POST /api/profile/resume`. The user can clear it via `DELETE /api/profile/resume`.
+
+Generate route: `/api/generate` was `resume file is required`; it now accepts either an uploaded file OR no file (and reads `profiles.resume_text`). Order of preference: explicit upload wins (allows ad-hoc overrides for a specific role); fallback to stored text when no file is in the request; 400 with `missingResume: true` if neither.
+
+Trade-offs:
+- Faster generations: PDF parsing happens once per upload, not once per generate.
+- Lower drop-off: most return users were re-uploading the same file each time.
+- Privacy footer copy updated: "Job descriptions discarded after generation. Stored resume text removable anytime from your account." Honest about what we keep and where the kill switch is.
+
+[`app/page.tsx`](../app/page.tsx) became a Server Component (auth + profile read + redirect); the existing 1295-line client component was renamed to [`app/HomeClient.tsx`](../app/HomeClient.tsx) and now accepts `signedIn` + `storedResumeFilename` props. The upload widget on `/account` is [`components/ResumeSettings.tsx`](../components/ResumeSettings.tsx).
