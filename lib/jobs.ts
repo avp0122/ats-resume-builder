@@ -96,7 +96,7 @@ async function fetchRemoteOk(): Promise<Job[]> {
   try {
     const res = await fetch('https://remoteok.com/api', {
       headers: { 'User-Agent': 'kairesume-jobs/1.0 (+https://kairesume.fit/jobs)' },
-      next: { revalidate: 86400 },
+      next: { revalidate: 86400, tags: ['jobs'] },
     });
     if (!res.ok) return [];
     raw = await res.json();
@@ -155,7 +155,7 @@ async function fetchRemotive(): Promise<Job[]> {
   try {
     const res = await fetch('https://remotive.com/api/remote-jobs?category=devops', {
       headers: { 'User-Agent': 'kairesume-jobs/1.0 (+https://kairesume.fit/jobs)' },
-      next: { revalidate: 86400 },
+      next: { revalidate: 86400, tags: ['jobs'] },
     });
     if (!res.ok) return [];
     raw = (await res.json()) as RemotiveRaw;
