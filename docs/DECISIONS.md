@@ -256,3 +256,26 @@ Fixes:
 - New [`normalizeCoverLetterHtml()`](../lib/llm.ts) in `lib/llm.ts` runs on every LLM response. If the body has ≥2 well-formed `<p>` tags AND no monolithic single-paragraph case, leave it alone (with `<br><br>` → `</p><p>` cleanup). Otherwise strip all tags, split on blank lines / single newlines / sentence-ends as progressive fallbacks, and rebuild as proper `<p>…</p>` blocks. Always produces something copyable.
 - `renderCoverLetterDocument` rewritten to emit a single-line HTML string with no source indentation.
 - [`htmlToPlainText`](../components/ResumePreview.tsx) hardened to inject explicit `\n\n` at block boundaries before letting the browser flatten — no longer depends on `innerText`'s browser-specific layout-aware whitespace insertion.
+
+---
+
+### 029 · 2026-05-26 · Active
+
+**`/jobs` is now staff-only; non-staff users see a real 404**
+
+(DECISION 028 was claimed by PR #48 for the Tavily cover-letter enrichment but that PR landed on its base branch instead of master, so 028 isn't yet on the trunk. Number left in the sequence so when PR #48's content is re-merged it slots cleanly.)
+
+Initial DECISION 023 made `/jobs` public — aggregated job listings as a small SEO surface. After watching usage, the page is better positioned as an internal tool for the owner / team rather than a public marketing page. Reasons: (1) the curated 24h list isn't dense enough to compete with dedicated job boards for SEO ranking; (2) keeping the page public means the Tavily-style enrichment ideas (deeper company research, contact discovery, etc.) would need privacy review; (3) the 1000-query Tavily free tier becomes a bottleneck if the page becomes popular.
+
+Implementation:
+- [`app/jobs/page.tsx`](../app/jobs/page.tsx) now reads the session server-side, checks `profile.plan === 'staff'`, and calls `notFound()` for everyone else. The 404 is genuine — the page reports itself as not-found, not as forbidden, so non-staff visitors don't even learn the URL exists.
+- `export const dynamic = 'force-dynamic'` since we now read cookies. The underlying Remote OK + Remotive fetches in [`lib/jobs.ts`](../lib/jobs.ts) keep their 24h `next.tags: ['jobs']` caching, so making the page dynamic doesn't re-hit the source APIs per request.
+- Page-level `metadata.robots: { index: false, follow: false }` so even if a search engine somehow discovers the URL it won't index.
+- [`app/sitemap.ts`](../app/sitemap.ts) no longer lists `/jobs`.
+- [`components/Navbar.tsx`](../components/Navbar.tsx) gates the Jobs link on `session.plan === 'staff'`. The navbar already fetches the raw plan from `profiles.plan`, so this needs no extra round-trip — the plan type was extended from `'free' | 'pro'` to `'free' | 'pro' | 'staff'`.
+- [`components/Footer.tsx`](../components/Footer.tsx) wraps the Jobs link in a new client component [`StaffOnlyFooterLink`](../components/StaffOnlyFooterLink.tsx) that polls `/api/me/staff`. This avoids forcing the Footer (a Server Component used on every page) to read auth cookies, which would force-dynamic the entire site.
+- The `RefreshJobsButton` and `/api/me/staff` endpoint from DECISION 025 are reused unchanged.
+
+Security boundary is the server-side `notFound()` call in `page.tsx`. The navbar/footer gates are UX only — if someone forged the staff API response client-side, the page would still 404 them.
+
+To re-public the page later: revert `notFound()` to a plain render, re-add `/jobs` to the sitemap, drop the `robots` metadata, ungate the navbar/footer links. Three files, ~10 minutes.

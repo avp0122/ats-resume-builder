@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import StaffOnlyFooterLink from './StaffOnlyFooterLink';
 
 export default function Footer() {
   const year = new Date().getFullYear();
@@ -31,11 +32,7 @@ export default function Footer() {
                   Pricing
                 </Link>
               </li>
-              <li>
-                <Link href="/jobs" className="text-white/70 hover:text-white transition">
-                  Jobs
-                </Link>
-              </li>
+              <StaffOnlyFooterLink href="/jobs" label="Jobs" />
               <li>
                 <Link href="/blog" className="text-white/70 hover:text-white transition">
                   Blog

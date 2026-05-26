@@ -7,7 +7,12 @@ import { createSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabas
 
 interface SessionState {
   email: string | null;
-  plan: 'free' | 'pro' | null;
+  /**
+   * RAW plan value from the `profiles` table — `'free' | 'pro' | 'staff'`.
+   * Used directly here so we can render the staff-only `/jobs` link
+   * without an extra `/api/me/staff` round-trip (DECISION 029).
+   */
+  plan: 'free' | 'pro' | 'staff' | null;
 }
 
 export default function Navbar() {
@@ -78,14 +83,18 @@ export default function Navbar() {
           >
             Pricing
           </Link>
-          <Link
-            href="/jobs"
-            className={`px-3 py-1.5 rounded-md transition ${
-              pathname?.startsWith('/jobs') ? 'text-white' : 'text-white/70 hover:text-white'
-            }`}
-          >
-            Jobs
-          </Link>
+          {session.plan === 'staff' && (
+            <Link
+              href="/jobs"
+              className={`px-3 py-1.5 rounded-md transition ${
+                pathname?.startsWith('/jobs')
+                  ? 'text-white'
+                  : 'text-white/70 hover:text-white'
+              }`}
+            >
+              Jobs
+            </Link>
+          )}
           <Link
             href="/blog"
             className={`px-3 py-1.5 rounded-md transition ${
