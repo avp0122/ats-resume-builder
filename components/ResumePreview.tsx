@@ -58,12 +58,39 @@ export default function ResumePreview({ previewHtml, title, copyText }: ResumePr
 
 /**
  * Convert document HTML to plain text suitable for clipboard / pasting into
- * an email. Uses the browser's text rendering so <p>, <br>, <li> become
- * proper newlines.
+ * an email.
+ *
+ * `innerText` on a *detached* div is unreliable across browsers — Safari in
+ * particular returns the textContent equivalent (no block-level newlines),
+ * which is how the cover letter ended up as one run-on line when pasted.
+ * So we pre-process the HTML to inject explicit newlines at block
+ * boundaries BEFORE letting the browser flatten it, instead of relying on
+ * any browser's interpretation of CSS layout for whitespace.
  */
 function htmlToPlainText(html: string): string {
+  // 1. Insert explicit paragraph breaks at block-level boundaries. Order
+  //    matters: replace closing+opening pairs first so we don't double-
+  //    insert when both run.
+  const withBreaks = html
+    .replace(/<\/p\s*>\s*<p[^>]*>/gi, '\n\n')
+    .replace(/<\/p\s*>/gi, '\n\n')
+    .replace(/<p[^>]*>/gi, '')
+    .replace(/<\/li\s*>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '• ')
+    .replace(/<\/(h[1-6]|ul|ol|div|section|article|header|footer|main)\s*>/gi, '\n\n')
+    .replace(/<br\s*\/?>/gi, '\n');
+
+  // 2. Strip remaining tags and decode entities via the browser.
   const div = document.createElement('div');
-  div.innerHTML = html;
-  const text = (div as HTMLElement).innerText || div.textContent || '';
-  return text.replace(/\n{3,}/g, '\n\n').trim();
+  div.innerHTML = withBreaks;
+  const text = (div as HTMLElement).textContent || '';
+
+  // 3. Tidy up: trim whitespace per line, collapse blank-line runs to one
+  //    blank line, drop leading/trailing blank lines.
+  return text
+    .split('\n')
+    .map((line) => line.replace(/[ \t ]+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }

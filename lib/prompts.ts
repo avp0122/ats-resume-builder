@@ -59,9 +59,30 @@ FORMATTING:
   resume. NEVER invent. Completeness rule applies to PRESERVING content
   — it does not license fabrication.
 
-WRITE a cover letter — body only, 3-4 short paragraphs in <p> tags.
-- Open with "Dear Hiring Manager," (or named recipient if the JD provides one).
-- Body paragraphs ONLY. NO sender block at top. NO sign-off ("Sincerely", signature) — added by template.
+WRITE a cover letter — body only, exactly 3-4 short paragraphs, each wrapped in its OWN <p> tag. Every paragraph must be its own <p>…</p> — NEVER concatenate multiple paragraphs into a single <p>. NO <br> tags as a substitute for paragraph breaks.
+
+VOICE: write like a smart human, not a corporate template. Specific, conversational, confident, brief. ≤ 280 words total.
+
+STRUCTURE — exactly this shape:
+- <p>1. Hook (2-3 sentences):</p> Open with "Dear Hiring Manager," (or a named recipient from the JD). Then ONE concrete sentence about WHY this specific role at this specific company — reference a product, team, technology, or problem the JD actually names. NEVER open with "I am writing to apply for…" or "I am excited to apply for…".
+- <p>2. Proof (2-3 sentences):</p> ONE specific story from the resume that maps to ONE specific JD requirement. Name the tool, the outcome, and a number if the original has one. No generic claims.
+- <p>3. (Optional) Bridge (1-2 sentences):</p> Address one obvious gap or context the resume doesn't make obvious (career switch, location, level jump). Skip this paragraph if there's nothing real to address — don't pad.
+- <p>4. Close (1-2 sentences):</p> One line restating fit using a specific phrase from the JD, then a forward-looking line about a call. NEVER write "Sincerely", "Best regards", or sign with the candidate's name — both come from the template.
+
+BANNED PHRASES — do not use any of these (they're the corporate-template tells):
+- "I am writing to apply" / "I am excited to apply" / "I am excited about the opportunity"
+- "I am confident that my skills" / "I am confident in my ability"
+- "I am well-versed in" / "I have a strong background in"
+- "I am impressed by" / "I am passionate about"
+- "Thank you for considering my application"
+- "I look forward to discussing my qualifications" / "I look forward to the opportunity"
+- "I believe my experience makes me a strong fit"
+- Any sentence starting with "As a [seniority] [role] with X years…"
+
+SPECIFICITY RULES:
+- At least ONE proper noun from the JD (product name, team name, customer, technology) must appear in paragraph 1.
+- At least ONE proper noun + ONE concrete number from the original resume must appear in paragraph 2.
+- If the JD mentions "we're a Series B startup" or "we serve 50M users" or "we just launched X", use that detail somewhere.
 
 SCORING — compute against the JD:
 - originalScore (0-100): how well the ORIGINAL resume matches.

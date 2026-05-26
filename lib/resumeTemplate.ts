@@ -70,28 +70,37 @@ export function renderCoverLetterDocument(
   });
   const signerName = (personalInfo.fullName || '').trim();
 
-  return `
-<div class="kairesume-doc" style="
-  ${widthStyle}
-  margin:0 auto;
-  padding:${padding};
-  background:#ffffff;
-  color:#0f172a;
-  font-family:'Inter','Helvetica Neue',Arial,sans-serif;
-  font-size:11pt;
-  line-height:1.65;
-  box-sizing:border-box;
-  overflow-wrap:anywhere;
-  word-break:break-word;
-">
-  <p style="margin:0 0 24px;color:#475569;font-size:10.5pt;">${escapeHtml(today)}</p>
-  <main>${styleCoverBody(bodyHtml)}</main>
-  <div style="margin-top:24px;color:#1e293b;line-height:1.7;">
-    <p style="margin:0 0 36px;">Sincerely,</p>
-    ${signerName ? `<p style="margin:0;font-weight:600;color:#0f172a;">${escapeHtml(signerName)}</p>` : ''}
-  </div>
-</div>
-`;
+  // IMPORTANT: build the HTML as one continuous string with NO leading
+  // whitespace on each line. Template-literal indentation here would
+  // otherwise leak into innerText when the user clicks Copy on the
+  // rendered preview — producing "  Dear Hiring Manager," with two
+  // leading spaces and "    Sincerely," with four. The styles handle
+  // visual layout; source whitespace just confuses the clipboard.
+  const wrapperStyle = [
+    widthStyle,
+    'margin:0 auto;',
+    `padding:${padding};`,
+    'background:#ffffff;',
+    'color:#0f172a;',
+    "font-family:'Inter','Helvetica Neue',Arial,sans-serif;",
+    'font-size:11pt;',
+    'line-height:1.65;',
+    'box-sizing:border-box;',
+    'overflow-wrap:anywhere;',
+    'word-break:break-word;',
+  ].join('');
+
+  const sincerelyBlock = signerName
+    ? `<div style="margin-top:24px;color:#1e293b;line-height:1.7;"><p style="margin:0 0 36px;">Sincerely,</p><p style="margin:0;font-weight:600;color:#0f172a;">${escapeHtml(signerName)}</p></div>`
+    : `<div style="margin-top:24px;color:#1e293b;line-height:1.7;"><p style="margin:0;">Sincerely,</p></div>`;
+
+  return (
+    `<div class="kairesume-doc" style="${wrapperStyle}">` +
+    `<p style="margin:0 0 24px;color:#475569;font-size:10.5pt;">${escapeHtml(today)}</p>` +
+    `<main>${styleCoverBody(bodyHtml)}</main>` +
+    sincerelyBlock +
+    `</div>`
+  );
 }
 
 function renderResumeHeader(p: PersonalInfo): string {
