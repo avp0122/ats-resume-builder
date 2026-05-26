@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { listJobs, type Job } from '@/lib/jobs';
+import RefreshJobsButton from '@/components/RefreshJobsButton';
 
 const SITE_URL = 'https://kairesume.fit';
 
@@ -105,6 +106,10 @@ export default async function JobsPage() {
             Remotive
           </a>
         </p>
+        {/* Self-gated by /api/me/staff — invisible to everyone except
+            users on the 'staff' plan. Clicking invalidates the cached
+            fetches and triggers a fresh re-render. */}
+        <RefreshJobsButton />
       </header>
 
       {jobs.length === 0 ? (

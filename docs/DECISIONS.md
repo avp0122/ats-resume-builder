@@ -206,3 +206,18 @@ Trade-offs:
 - Privacy footer copy updated: "Job descriptions discarded after generation. Stored resume text removable anytime from your account." Honest about what we keep and where the kill switch is.
 
 [`app/page.tsx`](../app/page.tsx) became a Server Component (auth + profile read + redirect); the existing 1295-line client component was renamed to [`app/HomeClient.tsx`](../app/HomeClient.tsx) and now accepts `signedIn` + `storedResumeFilename` props. The upload widget on `/account` is [`components/ResumeSettings.tsx`](../components/ResumeSettings.tsx).
+
+---
+
+### 025 · 2026-05-26 · Active
+
+**Staff users can force-refresh `/jobs` immediately (cache-invalidation, not bypass)**
+
+The `/jobs` page is ISR-cached for 24h to stay inside Remote OK / Remotive's "max ~4 fetches/day each" ToS guidance (DECISION 023). For internal users on the `'staff'` plan (DECISION 021) we wanted a manual override — "I'm doing a demo, pull fresh data now" — without giving every visitor that power (which would burn through the daily quota in minutes).
+
+Implementation in three pieces:
+1. The two source fetches in [`lib/jobs.ts`](../lib/jobs.ts) now carry `next.tags: ['jobs']` so they're individually invalidatable.
+2. [`app/jobs/actions.ts:refreshJobs()`](../app/jobs/actions.ts) is a Server Action that re-verifies the caller is staff, then calls `revalidateTag('jobs')` + `revalidatePath('/jobs')`. Non-staff get a `{ ok: false, reason: 'not-staff' }` no-op.
+3. [`components/RefreshJobsButton.tsx`](../components/RefreshJobsButton.tsx) is a client component that polls [`/api/me/staff`](../app/api/me/staff/route.ts) on mount and only renders if `isStaff === true`. Clicking calls the server action and `router.refresh()`'s on success.
+
+The staff check happens on the server in `refreshJobs()` — the client-side rendering gate is purely UX. Tampering with the rendered HTML to expose the button doesn't bypass the quota protection.
