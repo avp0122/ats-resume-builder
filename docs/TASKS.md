@@ -2,7 +2,7 @@
 
 > Active work state. Newest at the top in each section. Move tasks between sections as state changes. Reference PR numbers + commit hashes for traceability.
 
-Last updated: 2026-05-18.
+Last updated: 2026-05-26.
 
 ---
 

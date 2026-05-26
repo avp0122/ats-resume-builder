@@ -1,6 +1,6 @@
 # Architecture
 
-> Last reviewed: 2026-05-18. Keep this file in sync as the system changes — most ground truths live here, not in scattered comments.
+> Last reviewed: 2026-05-26. Keep this file in sync as the system changes — most ground truths live here, not in scattered comments.
 
 ## Overview
 
