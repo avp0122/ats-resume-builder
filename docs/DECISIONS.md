@@ -1,0 +1,165 @@
+# Decision history
+
+ADR-style log of consequential decisions. Append-only. Newest at the bottom. When a decision is reversed, leave the old entry in place and add a new one explaining the reversal — context for future-me.
+
+Format: **ID · YYYY-MM-DD · status** — one-line decision. Body explains the reason and consequences.
+
+---
+
+### 001 · 2026-05-12 · Active
+
+**Stack: Next.js 14 (App Router) + TypeScript + Tailwind + Supabase + Groq + Vercel**
+
+Chose Next 14 App Router for file-convention routing + serverless functions on the same Vercel deploy. Supabase covers auth + Postgres in one free tier. Groq picked over OpenAI for free-tier TPM cost (no card required, fast inference). Vercel because the dev → prod flow is one `git push`. Tailwind because we don't want to maintain a design system for a small product.
+
+---
+
+### 002 · 2026-05-12 · Active
+
+**Anonymous users see ATS score but resume preview is blurred until signup**
+
+The product's value is the rewrite, not the score. Showing the rewrite for free with no signup → no conversion. Showing nothing → user can't see if the tool worked. Blurred-with-CTA hits the middle: the user sees we did real work, but has to sign up to actually read or download it. `BlurGate` in [`app/page.tsx`](../app/page.tsx) renders a CSS blur over `ResumePreview` with a sign-up overlay on top. Anonymous users also see a disabled "Download (sign up)" button.
+
+---
+
+### 003 · 2026-05-12 · Superseded by 005
+
+**Quota tiers: 1 anon, 3 signed-in/month, unlimited Pro**
+
+Started with these numbers as a guess. 3 was too tight (legitimate users hit the cap weekly — typical job hunt is 3–5 apps/week).
+
+---
+
+### 004 · 2026-05-13 · Active
+
+**`profiles` table stores USER state only; per-resume contact info lives in `resume_uploads`**
+
+Initial schema put `full_name`, `phone`, `location`, `social_links` on `profiles` and the generate route backfilled them from each upload. Wrong: those fields describe a *specific resume*, not the account — a user can legitimately upload three different resumes for three different roles with different contact blocks. Migration `008_profiles_user_info_only.sql` dropped the columns from profiles; per-upload rows in `resume_uploads` (added in migration 004) hold the contact block per generation.
+
+---
+
+### 005 · 2026-05-18 · Active (supersedes 003)
+
+**Bumped signed-in free tier from 3 → 10 generations / month**
+
+3 was too tight. 10 covers a typical week's worth of job applications without forcing Pro upgrade. Higher than 10 starts to look like abuse / per-employer mass output, which Pro is for. One-line change in `lib/pricing.ts:SIGNED_IN_FREE_GENERATIONS`. All gating logic + copy already references the constant so the behaviour change ships without further code edits (audited in PR #37).
+
+---
+
+### 006 · 2026-05-13 · Active
+
+**Anonymous resume uploads stored against a signed cookie `anon_id`, claimed on signup**
+
+`resume_uploads.user_id` was originally `NOT NULL`. Anonymous generations had nothing to attach to and were lost. Migration `011_resume_uploads_anon.sql` made `user_id` nullable, added `anon_id` text, and a `CHECK ((user_id IS NOT NULL) XOR (anon_id IS NOT NULL))` invariant. New cookie `kairesume_anon_id` (HMAC-signed, 1-year expiry) tracks the visitor. On signup, `/api/auth/signup` runs `UPDATE resume_uploads SET user_id = $new, anon_id = NULL WHERE anon_id = $cookie` to claim the history, then clears the cookie.
+
+---
+
+### 007 · 2026-05-14 · Active
+
+**Crypto payment chains: TRC-20 (Tron) + ERC-20 (Ethereum)**
+
+Went through several iterations: started with TRC-20 → swapped to BEP-20 (BSC) → added ERC-20 alongside BEP-20 → dropped BEP-20 back out. Final state is TRC-20 + ERC-20. Reasoning: TRC-20 has the lowest fees and is the most common USDT chain among crypto-native users; ERC-20 is the universal fallback expected by anyone on a major CEX. BEP-20 was redundant with TRC-20 for the fee story and added a third verifier to maintain.
+
+---
+
+### 008 · 2026-05-14 · Active
+
+**Etherscan V2 unified API for ERC-20 verification; TronGrid for TRC-20**
+
+Etherscan rolled BscScan + Etherscan into one V2 endpoint (`api.etherscan.io/v2/api`) with `chainid` as a query param. One API key works for every EVM chain. TRC-20 is not EVM — different REST API, different address format (base58 starting with "T"), different signature parsing. `lib/crypto.ts:verifyUsdtTransfer(chain, …)` dispatches: TRC-20 → TronGrid REST; ERC-20 → Etherscan V2 (chainid=1).
+
+---
+
+### 009 · 2026-05-14 · Active
+
+**Multi-tier Pro pricing: 1mo / 3mo (-20%) / 1yr (-30%)**
+
+Monthly-only pricing made the prepay discount math implicit (users had to do it themselves). Three explicit tiers in `PRO_TIERS` give a clear ladder. `PlanId` stays `'free' | 'pro'` in the DB; the period selection only controls the `pro_until` extension. Checkout page has period + chain pickers that don't re-mount the invoice card on every change (cleaner UX).
+
+---
+
+### 010 · 2026-05-15 · Active
+
+**Free customer support: floating popup widget, not a dedicated page**
+
+A dedicated `/support` page is one click + one URL away — too friction-heavy for "I just want to say this is broken". Floating bottom-right button is one click. Required fields: title + email + message. Phone optional. Backed by `support_tickets` table (RLS: users insert/read their own; admin reads inbox).
+
+---
+
+### 011 · 2026-05-15 · Active
+
+**Capture OS / browser / version / geo-IP / IP on `profiles` at signup time**
+
+Useful for support ("user reports issue on iOS 18 Safari"), abuse detection (signups from same IP in burst), and account verification ("this looked like an unfamiliar location"). UA parsed server-side from headers; geo-IP via `ipapi.co` (best-effort, 2-second timeout, never blocks signup). Migration `010_profiles_signup_meta.sql`.
+
+---
+
+### 012 · 2026-05-15 · Active
+
+**Hard quota gate fires BEFORE the LLM call, not after**
+
+Original code called the LLM, then decided `downloadAllowed=false` if the user was over cap. Two bugs: (a) we paid for an LLM call the user wasn't allowed to use, (b) the counter kept growing past the limit producing "6/3" / "7/3" rows in the DB. New gate in `/api/generate` returns 402 with `upgradeRequired: true` if `preGenCount >= SIGNED_IN_FREE_GENERATIONS`. The 402 response also opportunistically clamps over-counted rows back to the limit. Migration `006_clamp_free_generations.sql` cleaned up legacy over-counts.
+
+---
+
+### 013 · 2026-05-16 · Active
+
+**PDF text extraction: `pdf-parse` primary, `pdfreader` fallback**
+
+`pdfjs-dist` 4.x is the modern Mozilla renderer and worked great in local dev. On Vercel serverless it always tried to dynamic-import its worker file (`pdf.worker.mjs`), which webpack didn't ship in the lambda — producing "Setting up fake worker failed: Cannot find module" at runtime. Tried four fixes (worker disable, `serverExternalPackages`, `eval('require')`, `outputFileTracingIncludes`) — each broke a different way. Switched to `pdf-parse`, which wraps `pdfjs-dist` 1.10 internally with no worker. Boring, battle-tested, just works on Vercel.
+
+---
+
+### 014 · 2026-05-16 · Active
+
+**Groq model swap: `gpt-oss-120b` → `llama-3.3-70b-versatile`**
+
+`gpt-oss-120b` had an 8K TPM free-tier cap and we were hitting it constantly even with aggressive input compression. `llama-3.3-70b-versatile` is 12K TPM (+50%) with comparable JSON-mode reliability for our ATS rewrite use case. Side effect: Llama 3.3 is biased toward concise output — required adding the "PRESERVE COMPLETENESS" rule to `lib/prompts.ts` so it stops over-summarising 8-job resumes into 2 jobs.
+
+---
+
+### 015 · 2026-05-16 · Active
+
+**Token estimator uses `chars/3` (was 4, then 3.5)**
+
+After two real-world "Requested 8XXX, Limit 8000" breaches, settled on `chars/3` as the pessimistic estimator. URL-heavy and code-heavy inputs tokenise ~17% above what `chars/4` predicts; `chars/3` absorbs that gap. Belt + braces: `lib/llm.ts` also auto-retries on 413 with shrunk inputs (jd → 40%, resume → 60%) before bubbling the error.
+
+---
+
+### 016 · 2026-05-17 · Active
+
+**Pricing constants are the single source of truth for all copy**
+
+Every "3 / month" or "10 generations" string in the codebase was a fresh source of drift. Now `lib/pricing.ts:SIGNED_IN_FREE_GENERATIONS` is interpolated into: API error messages, FAQ entries, hero tier badges, JSON-LD `Offer.description`, `llms.txt`, PaywallCard sub-text, Account-page stat. Future quota changes are one constant edit.
+
+---
+
+### 017 · 2026-05-17 · Active
+
+**Explicit AI crawler allowlist in `robots.txt`**
+
+The wildcard `User-agent: *` block functionally allowed every UA, but AEO / GEO best practice is to list AI crawlers explicitly — many of them look for their own UA before falling back to `*`. Listed: OpenAI (GPTBot / ChatGPT-User / OAI-SearchBot), Anthropic (ClaudeBot / anthropic-ai / Claude-Web), Common Crawl, Perplexity, Google-Extended, Applebot-Extended, Meta-ExternalAgent, Bytespider, Amazonbot, DuckAssistBot, YouBot, cohere-ai, mistral-ai. Cloudflare's auto-injected `Content-Signal: ai-train=no` header contradicts this — disable in Cloudflare dashboard for consistency.
+
+---
+
+### 018 · 2026-05-17 · Active
+
+**Five JSON-LD schemas in `<head>`: Organization, WebApplication, HowTo, FAQPage, Person**
+
+Site-wide in `app/layout.tsx`: Organization (brand box in Google + answer engines), WebApplication (rich snippet with all three Pro `Offer` tiers), HowTo (the 4-step generation flow with `totalTime: PT1M`), Person (founder — links the product to a real human for trust signals). Home page adds FAQPage with 10 sentence-level Q/A pairs phrased to match common search + chat queries.
+
+---
+
+### 019 · 2026-05-18 · Active
+
+**DOCX output ships alongside PDF in the same ZIP**
+
+Many ATS parsers (Workday, Greenhouse, Lever, iCIMS, Taleo) read DOCX more reliably than PDF — they extract real Office Open XML rather than re-deriving text from PDF glyph positions. ZIP now contains 4 files: `<name>_resume.pdf`, `<name>_resume.docx`, `<name>_coverletter.pdf`, `<name>_coverletter.docx`. DOCX generated client-side via `@turbodocx/html-to-docx` (browser-safe, modern OOXML). Same Promise.all batch as PDF rendering — total prep time is max-of-four, not sum.
+
+---
+
+### 020 · 2026-05-18 · Active
+
+**In-place PDF style preservation declined; multi-template picker recommended instead**
+
+User asked whether we could replace text in the original uploaded PDF in-place so the original visual style survives. Investigated: `pdf-lib` can do whiteout+redraw, but rewritten content length almost never matches the original (different bullet count, different keyword density), so text overflows or leaves gaps. Plus most uploaded "pretty" resumes (Cake Resume, Canva) are ATS-hostile by construction — preserving them defeats the rewrite's purpose. **No code change shipped.** Future option: multi-template picker (Modern / Classic / Compact) — gives users visual choice without breaking the rewrite. See open issue.
