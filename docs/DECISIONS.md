@@ -163,3 +163,11 @@ Many ATS parsers (Workday, Greenhouse, Lever, iCIMS, Taleo) read DOCX more relia
 **In-place PDF style preservation declined; multi-template picker recommended instead**
 
 User asked whether we could replace text in the original uploaded PDF in-place so the original visual style survives. Investigated: `pdf-lib` can do whiteout+redraw, but rewritten content length almost never matches the original (different bullet count, different keyword density), so text overflows or leaves gaps. Plus most uploaded "pretty" resumes (Cake Resume, Canva) are ATS-hostile by construction — preserving them defeats the rewrite's purpose. **No code change shipped.** Future option: multi-template picker (Modern / Classic / Compact) — gives users visual choice without breaking the rewrite. See open issue.
+
+---
+
+### 021 · 2026-05-26 · Active
+
+**Third stored `plan` value: `'staff'` — unconditional Pro for comped accounts**
+
+Need a way to grant unlimited generations to specific users (staff, friends-of-the-house, manual comps) without setting a sentinel future `pro_until` date. Chose to extend `effectivePlan()` in [`lib/plan.ts`](../lib/plan.ts) to map `plan === 'staff'` → effective `'pro'` unconditionally. Three reasons over the sentinel-date approach: (1) queryable as a distinct cohort in the DB (`where plan = 'staff'`), so analytics on "non-paying-but-unlimited" stay clean; (2) no risk of a far-future date silently expiring; (3) `'staff'` is deliberately NOT added to the purchasable `PlanId` union in `pricing.ts` — the UI cannot offer it. Grant via SQL: `update profiles set plan='staff' where id='<uuid>'`. Revoke by setting back to `'free'`. No migration required (the `plan` column is free `text`, no CHECK constraint).
