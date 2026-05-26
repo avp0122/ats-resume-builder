@@ -78,6 +78,22 @@ export default function Navbar() {
           >
             Pricing
           </Link>
+          <Link
+            href="/jobs"
+            className={`px-3 py-1.5 rounded-md transition ${
+              pathname?.startsWith('/jobs') ? 'text-white' : 'text-white/70 hover:text-white'
+            }`}
+          >
+            Jobs
+          </Link>
+          <Link
+            href="/blog"
+            className={`px-3 py-1.5 rounded-md transition ${
+              pathname?.startsWith('/blog') ? 'text-white' : 'text-white/70 hover:text-white'
+            }`}
+          >
+            Blog
+          </Link>
           {session.email ? (
             <>
               {session.plan === 'pro' ? (

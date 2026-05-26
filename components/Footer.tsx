@@ -32,6 +32,16 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
+                <Link href="/jobs" className="text-white/70 hover:text-white transition">
+                  Jobs
+                </Link>
+              </li>
+              <li>
+                <Link href="/blog" className="text-white/70 hover:text-white transition">
+                  Blog
+                </Link>
+              </li>
+              <li>
                 <Link href="/account" className="text-white/70 hover:text-white transition">
                   Account
                 </Link>
@@ -58,7 +68,7 @@ export default function Footer() {
 
         <div className="mt-10 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-white/40">
           <div>© {year} kairesume. All rights reserved.</div>
-          <div>Inputs processed in-memory and discarded after generation.</div>
+          <div>Job descriptions discarded after generation. Stored resume text removable anytime from your account.</div>
         </div>
       </div>
     </footer>

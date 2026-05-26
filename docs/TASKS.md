@@ -42,6 +42,11 @@ Last updated: 2026-05-26.
 
 Newest first. Strikethrough what's no longer relevant.
 
+- **2026-05-26** — One-resume-per-profile (schema migration + account widget + JD-only home flow) · [PR #43, open]
+- **2026-05-26** — Recent-jobs aggregator at `/jobs` (RemoteOK + Remotive, last 24h, France-friendly) · [PR #42, open]
+- **2026-05-26** — Blog at `/blog` with 5 MDX seed posts · [PR #41, open]
+- **2026-05-26** — `'staff'` plan value for comped accounts · [PR #40, open]
+- **2026-05-26** — `docs/` directory + ARCHITECTURE / DECISIONS / TASKS / summaries · [PR #39, open]
 - **2026-05-18** — Person JSON-LD for founder · [PR #36, merged]
 - **2026-05-17** — Explicit AI crawler allowlist in robots.txt · [PR #35, merged]
 - **2026-05-17** — Shorter `<title>` (≤60 chars for SERP) · [PR #34, merged]

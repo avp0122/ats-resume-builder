@@ -1,0 +1,92 @@
+---
+title: "Why Pretty Resumes from Canva and Cake Get Silently Rejected by ATS"
+description: "Three specific reasons design-tool-exported PDFs lose data inside Applicant Tracking Systems — and how to keep your visual identity without losing the match score."
+date: "2026-05-20"
+tags: ["ats", "canva", "cake", "design"]
+readingMinutes: 6
+---
+
+The single most common pattern we see in resumes uploaded to kairesume looks like this: a beautifully designed two-column PDF from Canva or Cake Resume, with a sidebar of skill icons, an accent color in the headings, and a profile photo in the top-right.
+
+It looks great. It scores badly. And the candidate has no idea, because the ATS doesn't tell anyone — neither the recruiter nor the applicant — that text was lost during parsing.
+
+This post explains three specific failure modes, with examples, so you can spot them in your own resume.
+
+## Failure mode 1: multi-column layouts get serialized wrong
+
+Most "designed" resume templates use a two-column layout — your name, contact info, skills, and education in a left sidebar, your work history in the right column.
+
+ATS parsers read PDF content using glyph positions, not visual structure. The parser scans top-to-bottom, left-to-right. With a two-column layout, that scan produces this serialization order:
+
+```
+Andrei VP
+andrei@email.com
+Senior DevOps Engineer
++33 6 12 34 56 78
+Acme Corp · Jan 2023 – Present
+Paris, France
+Migrated 30 services to Kubernetes...
+Skills
+Reduced infra cost 22%...
+Kubernetes
+Terraform
+AWS
+```
+
+Your contact info, sidebar items, and job bullets are interleaved into one jumbled stream. The parser then tries to detect sections — and fails. Your job experience gets attached to "Skills". Your skills end up under "Experience." The recruiter sees a score of 42% match when the actual content overlap was 89%.
+
+Fix: single-column layout. Always. There is no exception for senior roles, design-adjacent roles, or "creative" industries — modern ATS in every industry uses the same parsers.
+
+## Failure mode 2: text rendered as image or SVG path
+
+Canva, Figma, and some Cake Resume themes render decorative text (your name banner, skill ratings, section dividers) as flattened images or as SVG path objects rather than real text glyphs.
+
+To you, it looks like text. To the ATS, it's a picture with no extractable content.
+
+You can test this yourself. Open your PDF in any text-aware reader and try to select the text with your mouse. If your name highlights but the skill ratings or the section heading don't — those parts won't reach the ATS either.
+
+In particular:
+
+- **Skill star-ratings** ("Kubernetes ★★★★☆") are almost always images.
+- **Decorative section dividers** with text inside ("EXPERIENCE" inside a banner shape) frequently are.
+- **Custom fonts** without an embedded `ToUnicode` map can fail entirely — every character extracts as a `?` or a meaningless private-use codepoint.
+
+Fix: stick to real text in a system or web-safe font (Arial, Calibri, Helvetica, Inter, Roboto). Avoid templates that flatten any text to image.
+
+## Failure mode 3: word-spacing metadata gets stripped
+
+This is the most insidious failure because the resume looks perfect when you open it, but the parser sees text like this:
+
+```
+SeniorDevOpsEngineerwith7yearsexperienceleadingplatformteamsandkubernetesmigrations
+```
+
+PDF doesn't actually store spaces — it stores glyph positions and lets the renderer compute spaces from the gaps. When the gap calculation goes wrong (custom fonts, kerning, or PDF compression options), the parser concatenates everything into runs of one giant word.
+
+Once a parser sees "SeniorDevOpsEngineerwith7years" it can't find a single skill match. Your entire resume looks empty.
+
+Fix: export your PDF from Word or Google Docs, never from a design tool. If your design tool is the only option, also submit a DOCX version — most ATS forms accept either.
+
+## Why this is asymmetric
+
+Here's the part that frustrates candidates the most: there is no feedback loop. The recruiter sees your score, not your parsed text. The ATS doesn't surface parsing errors. And the candidate sees their beautiful PDF and assumes everything is fine.
+
+You can rank in the bottom 10% with a beautiful Canva resume against a top-50% match against the actual job, and you'll never know why nobody replies.
+
+## What to use instead
+
+Two boring options that consistently outperform pretty templates:
+
+1. **A single-column Word template.** Black text, one accent color in the section headings if you want a hint of design, standard fonts, real text everywhere. Export to both DOCX and PDF.
+2. **A LaTeX template like Awesome-CV or Deedy.** Excellent parsing, looks clean, version-controllable. Higher learning curve.
+
+Or — and this is a small plug, but it's the actual product we built — paste your existing resume into [kairesume](/). It extracts the text, rewrites it tailored to a specific job description, and exports both PDF and DOCX in the format ATS systems actually read cleanly. The visual style is intentionally plain. The match score is what wins interviews.
+
+## A note on visual identity
+
+You can have your visual brand somewhere — just not on the resume that goes through an ATS. Most candidates we've talked to who care about design end up with two artifacts:
+
+- A plain, ATS-clean resume they submit via job forms.
+- A designed one-pager or portfolio link they send directly to recruiters in a follow-up, or link to from their LinkedIn.
+
+Both work for their intended channels. Mixing them is the trap.
