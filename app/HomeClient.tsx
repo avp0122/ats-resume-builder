@@ -392,26 +392,37 @@ export default function Home({ signedIn, storedResumeFilename }: HomeProps) {
    * structured Office Open XML rather than re-extracting text from PDF
    * glyphs), so we ship both formats inside the same ZIP.
    *
-   * Uses @turbodocx/html-to-docx which produces real OOXML — Word and
-   * Google Docs both open it cleanly. The library is browser-safe so
-   * we keep generation entirely client-side (no extra server load,
-   * no extra Vercel function cold-start).
+   * Why this hits a server route instead of running html-to-docx in the
+   * browser: `@turbodocx/html-to-docx` was forked from a Node-only library
+   * and still imports `zlib` / `fs` / `http` / etc. at the top of its ESM
+   * bundle. Some of those (zlib for the OOXML zip wrap) actually run, so
+   * polyfilling them as empty stubs produces errors like "Cannot read
+   * properties of undefined (reading 'Z_SYNC_FLUSH')". The library's
+   * "browser" entry shipped in v1.20.0 is an IIFE that webpack can't
+   * `import`. Running it in `/api/docx` where Node provides real zlib
+   * sidesteps the entire mess — and drops ~1.1 MB from the client bundle.
+   * See upstream issue https://github.com/turbodocx/html-to-docx/issues/203.
    */
   const renderDocxBlob = useCallback(async (htmlContent: string): Promise<Blob> => {
-    const mod = await import('@turbodocx/html-to-docx');
-    const HTMLtoDOCX: any = (mod as any).default ?? mod;
-    // Standard US Letter at 1" margins. Returns Blob in browser.
-    const result = await HTMLtoDOCX(htmlContent, undefined, {
-      orientation: 'portrait',
-      margins: { top: 1440, right: 1440, bottom: 1440, left: 1440 }, // 1" each
-      font: 'Calibri',
-      fontSize: 22, // half-points → 11pt
+    const response = await fetch('/api/docx', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: htmlContent }),
     });
-    return result instanceof Blob
-      ? result
-      : new Blob([result], {
-          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        });
+    if (!response.ok) {
+      // Surface a body if the server included one; otherwise a generic
+      // status-based error. Either way it bubbles up to setDownloadError
+      // so the user sees something more actionable than a blank.
+      let detail = '';
+      try {
+        const json = await response.json();
+        if (json && typeof json.error === 'string') detail = `: ${json.error}`;
+      } catch {
+        /* response wasn't JSON — fine */
+      }
+      throw new Error(`DOCX render failed (${response.status})${detail}`);
+    }
+    return await response.blob();
   }, []);
 
   const downloadZip = useCallback(async () => {
