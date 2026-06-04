@@ -2,7 +2,7 @@
 
 > Active work state. Newest at the top in each section. Move tasks between sections as state changes. Reference PR numbers + commit hashes for traceability. See [CURRENT_STATE.md](CURRENT_STATE.md) for a deployment / route / env-var snapshot.
 
-Last updated: 2026-05-26.
+Last updated: 2026-05-27.
 
 ---
 
@@ -21,10 +21,11 @@ Last updated: 2026-05-26.
 
 ### Manual / dashboard work (unblocked, just hasn't been done)
 
+- **Add `https://kairesume.fit/auth/callback` to Supabase dashboard → Auth → URL Configuration → Redirect URLs.** Required for the new forgot-password flow (DECISION 030). Without it, the PKCE exchange fails with "Invalid redirect URL" and the user lands on `/forgot-password?error=...`. A `*` wildcard works too but is broader than necessary.
 - **Add `TAVILY_API_KEY` to Vercel env vars.** Without this, the Tavily enrichment from DECISION 028 silently does nothing — every user gets the humanized-but-not-research-enriched cover letter from DECISION 027. Rotate the dev key first (it was pasted in chat).
 - **Disable Cloudflare's `Content-Signal: search=yes, ai-train=no` injection.** Contradicts our explicit AI allowlist in `robots.txt` (PR #35). Cloudflare dashboard → Security → Bots → AI Audit / Content Signals → toggle off.
 - **Submit `/sitemap.xml` to Google Search Console + Bing Webmaster Tools.** Earlier "Couldn't fetch" likely a stale-status artefact (curl confirms Googlebot can reach it). Remove + re-add in Search Console to force a retry.
-- **Update Supabase dashboard "Site URL" setting** to `https://kairesume.fit`. Code-level `emailRedirectTo` is set, but Supabase builds the verify link from the dashboard Site URL setting. Without this, confirmation emails still link to localhost.
+- **Update Supabase dashboard "Site URL" setting** to `https://kairesume.fit`. Code-level `emailRedirectTo` is set, but Supabase builds the verify link from the dashboard Site URL setting. Without this, confirmation emails (and reset emails) still link to localhost.
 
 ### Monitoring / decisions deferred
 

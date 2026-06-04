@@ -29,6 +29,9 @@ Next.js 14.2.5 App Router + TypeScript + Tailwind + Supabase auth/db + Groq Llam
 | `/blog/[slug]` | Post detail (5 seeded) | ISR (24h, SSG'd at build) |
 | `/account` | Profile + resume settings | Dynamic |
 | `/signin`, `/signup` | Auth | Static |
+| `/forgot-password` | Email entry for password reset | Dynamic (reads session to bounce signed-in users) |
+| `/reset-password` | Set a new password (post-recovery-email or proactive change) | Dynamic, `noindex,nofollow` |
+| `/auth/callback` | PKCE code exchange for Supabase email links | Route handler (GET) |
 | `/checkout` | Crypto payment | Dynamic |
 | `/terms`, `/privacy` | Legal | Static |
 | `/sitemap.xml`, `/robots.txt`, `/llms.txt` | SEO | Static |
@@ -49,6 +52,8 @@ Next.js 14.2.5 App Router + TypeScript + Tailwind + Supabase auth/db + Groq Llam
 | `GET /api/usage` | Anon-aware | Quota + plan info for UI |
 | `GET /api/me/staff` | Anon-aware | `{isStaff: boolean}` for client-side gate UX |
 | `POST /api/auth/{signup,signin,signout}` | — | Supabase auth proxies |
+| `POST /api/auth/forgot-password` | Anon | Send reset-email via Supabase (anti-enumerating) |
+| `POST /api/auth/reset-password` | Recovery session or signed-in | Apply new password via `updateUser` |
 | `POST /api/checkout/{crypto,verify}` | Signed in | USDT TRC-20 / ERC-20 payment + verification |
 | `POST /api/support` | Anon | Support ticket submission |
 
@@ -108,10 +113,11 @@ All applied to production as of 2026-05-26.
 ## Manual maintenance (currently outstanding)
 
 1. **Cloudflare** — disable `Content-Signal` auto-injection on robots.txt (Security → Bots → AI Audit).
-2. **Supabase dashboard** — set Site URL to `https://kairesume.fit` (currently localhost for confirmation emails).
-3. **Google Search Console** — remove + re-add `/sitemap.xml` to force refresh.
-4. **Test fixtures** — pin `Liam_Sato_Cake_Resume.pdf` + `Jamal.Hamilton-Resume.pdf` into `/test-fixtures/`.
-5. **Vercel env var** — add `TAVILY_API_KEY` (with a rotated dev key) for the Tavily enrichment to actually fire.
+2. **Supabase dashboard — Site URL** → set to `https://kairesume.fit` (currently localhost for confirmation emails).
+3. **Supabase dashboard — Redirect URLs** → add `https://kairesume.fit/auth/callback` (required for the password-reset flow's PKCE exchange to succeed). The default `*` wildcard works too but is broader than necessary.
+4. **Google Search Console** — remove + re-add `/sitemap.xml` to force refresh.
+5. **Test fixtures** — pin `Liam_Sato_Cake_Resume.pdf` + `Jamal.Hamilton-Resume.pdf` into `/test-fixtures/`.
+6. **Vercel env var** — add `TAVILY_API_KEY` (with a rotated dev key) for the Tavily enrichment to actually fire.
 
 ## How to grant unlimited access to a user
 

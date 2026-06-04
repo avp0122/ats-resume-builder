@@ -307,3 +307,29 @@ Implementation:
 Security boundary is the server-side `notFound()` call in `page.tsx`. The navbar/footer gates are UX only — if someone forged the staff API response client-side, the page would still 404 them.
 
 To re-public the page later: revert `notFound()` to a plain render, re-add `/jobs` to the sitemap, drop the `robots` metadata, ungate the navbar/footer links. Three files, ~10 minutes.
+
+---
+
+### 030 · 2026-05-27 · Active
+
+**Forgot-password flow via Supabase PKCE callback at `/auth/callback`**
+
+Until now there was no self-serve password reset — users who forgot their password had to ask support. Added the standard three-step flow: enter email → click email link → set new password. Implementation choices:
+
+- **Two new pages + three new routes.** [`/forgot-password`](../app/forgot-password/page.tsx) renders [`ForgotPasswordForm`](../components/ForgotPasswordForm.tsx); [`/reset-password`](../app/reset-password/page.tsx) renders [`ResetPasswordForm`](../components/ResetPasswordForm.tsx). The matching API routes are [`POST /api/auth/forgot-password`](../app/api/auth/forgot-password/route.ts) and [`POST /api/auth/reset-password`](../app/api/auth/reset-password/route.ts). A new [`/auth/callback`](../app/auth/callback/route.ts) GET handler does the PKCE code exchange.
+
+- **PKCE callback is reusable.** With `@supabase/ssr`'s default PKCE flow, the link in the reset email points at `/auth/callback?code=<pkce-code>&next=/reset-password`. The handler exchanges the code into a recovery session (cookie set by `@supabase/ssr`'s cookie writer on the response) then forwards to `next`. The same callback can host future flows — magic links, email-change confirmation — by passing a different `next`. Signup-confirm still uses the existing `?confirmed=1` redirect because that flow already works without code exchange.
+
+- **`next` is sanitised on the callback.** Open-redirect protection: only internal absolute paths (`/`-prefixed, not `//`) are honored. Anything else falls back to `/`.
+
+- **Anti-enumeration on the request route.** `/api/auth/forgot-password` returns HTTP 200 unconditionally once basic email-shape validation passes, even when Supabase's downstream call errors. The UI mirrors this — the success message says "*if* an account exists for that email". Without this, a third party could probe our user list one email at a time. Server-side log of failures is preserved so operators can still see real outages.
+
+- **`/reset-password` accepts both recovery sessions AND existing signed-in sessions.** Same `updateUser({ password })` call under the hood. This means a signed-in user can navigate to `/reset-password` directly to proactively change their password — no separate "change password" page needed. Anyone without any session at all bounces to `/forgot-password`.
+
+- **Both new pages are `noindex,nofollow`.** Transactional pages — same treatment as `/jobs` (DECISION 029).
+
+- **"Forgot password?" link added to [`AuthForm`](../components/AuthForm.tsx)** above the password field on signin mode only. Signup doesn't need it.
+
+**Manual setup required:** the Supabase dashboard's "Redirect URLs" allowlist must include `https://kairesume.fit/auth/callback` — otherwise the PKCE exchange will fail with an "Invalid redirect URL" error. Tracked in [`CURRENT_STATE.md`](CURRENT_STATE.md) Manual maintenance §3.
+
+**Why not Supabase's hosted UI?** The hosted UI is OK but doesn't match the rest of our auth screens (dark gradient cards, kairesume branding). Cost of a custom page is one component file per direction; we already have `AuthForm` as the pattern. Cheap.
