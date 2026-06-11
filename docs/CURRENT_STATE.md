@@ -54,6 +54,8 @@ Next.js 14.2.5 App Router + TypeScript + Tailwind + Supabase auth/db + Groq Llam
 | `POST /api/auth/{signup,signin,signout}` | — | Supabase auth proxies |
 | `POST /api/auth/forgot-password` | Anon | Send reset-email via Supabase (anti-enumerating) |
 | `POST /api/auth/reset-password` | Recovery session or signed-in | Apply new password via `updateUser` |
+| `GET /api/rag/sources` | Bearer (`RAG_INGEST_TOKEN`) | Returns FAQ + blog as `[{source, content}]` for n8n to ingest |
+| Supabase Edge Function `embed` | Bearer (`RAG_INGEST_TOKEN`) | Runs `gte-small` via `Supabase.ai.Session` — embedding stays in Supabase infra, not in Vercel functions. Deployed via `supabase functions deploy embed --no-verify-jwt`. URL: `https://<project>.supabase.co/functions/v1/embed`. |
 | `POST /api/checkout/{crypto,verify}` | Signed in | USDT TRC-20 / ERC-20 payment + verification |
 | `POST /api/support` | Anon | Support ticket submission |
 
@@ -83,6 +85,8 @@ Applied migrations (in `supabase/migrations/`):
 - `011` resume_uploads_anon
 - `012` profile_resume — adds `resume_text` / `resume_filename` / `resume_uploaded_at`
 - `013` profile_plan_allow_staff — expands `profiles_plan_check` to include `'staff'`
+- `014` rag_chunks — pgvector extension + `rag_chunks(id, source, chunk_idx, content, embedding vector(384), updated_at)` with HNSW cosine index
+- `015` profiles_chat_quota — adds `chat_count_today int` + `chat_reset_at timestamptz` on `profiles`
 
 All applied to production as of 2026-05-26.
 
@@ -103,6 +107,7 @@ All applied to production as of 2026-05-26.
 | `ETHSCAN_API_KEY` (or `ETHERSCAN_API_KEY`, `BSCSCAN_API_KEY`) | Etherscan V2 for ERC-20 verification | Yes (for crypto checkout) |
 | `TRONGRID_API_KEY` | Lifts TRC-20 verification rate limits | Optional |
 | `TAVILY_API_KEY` | Cover letter company-research enrichment | **Optional** — feature silently disabled if unset |
+| `RAG_INGEST_TOKEN` | Bearer secret for n8n → `/api/rag/{sources,embed}` | **Yes** for the chat ingest pipeline (PR 2+). 32 random bytes, hex-encoded. Endpoints return 503 until set. |
 
 ## Active feature flags / runtime conditions
 
@@ -115,9 +120,15 @@ All applied to production as of 2026-05-26.
 1. **Cloudflare** — disable `Content-Signal` auto-injection on robots.txt (Security → Bots → AI Audit).
 2. **Supabase dashboard — Site URL** → set to `https://kairesume.fit` (currently localhost for confirmation emails).
 3. **Supabase dashboard — Redirect URLs** → add `https://kairesume.fit/auth/callback` (required for the password-reset flow's PKCE exchange to succeed). The default `*` wildcard works too but is broader than necessary.
-4. **Google Search Console** — remove + re-add `/sitemap.xml` to force refresh.
-5. **Test fixtures** — pin `Liam_Sato_Cake_Resume.pdf` + `Jamal.Hamilton-Resume.pdf` into `/test-fixtures/`.
-6. **Vercel env var** — add `TAVILY_API_KEY` (with a rotated dev key) for the Tavily enrichment to actually fire.
+4. **Supabase — run migrations 014 + 015** on production (pgvector + `rag_chunks` table + `profiles.chat_count_today` / `chat_reset_at` columns). Migrations apply cleanly; no downtime expected.
+5. **Generate `RAG_INGEST_TOKEN`** → 32 random bytes (`openssl rand -hex 32`). One value, set in three places:
+   1. Vercel env var `RAG_INGEST_TOKEN` (gates `/api/rag/sources`)
+   2. Supabase secret `RAG_INGEST_TOKEN` (gates the `embed` Edge Function): `npx supabase secrets set RAG_INGEST_TOKEN=<value>`
+   3. (PR 2) n8n `httpHeaderAuth` credential — same value, single credential used for both endpoints
+6. **Deploy the `embed` Supabase Edge Function**: `npx supabase functions deploy embed --no-verify-jwt`. Source at `supabase/functions/embed/index.ts`. Returns 503 until step 5.2 is also done.
+6. **Google Search Console** — remove + re-add `/sitemap.xml` to force refresh.
+7. **Test fixtures** — pin `Liam_Sato_Cake_Resume.pdf` + `Jamal.Hamilton-Resume.pdf` into `/test-fixtures/`.
+8. **Vercel env var** — add `TAVILY_API_KEY` (with a rotated dev key) for the Tavily enrichment to actually fire.
 
 ## How to grant unlimited access to a user
 
