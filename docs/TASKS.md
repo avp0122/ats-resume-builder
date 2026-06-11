@@ -2,13 +2,15 @@
 
 > Active work state. Newest at the top in each section. Move tasks between sections as state changes. Reference PR numbers + commit hashes for traceability. See [CURRENT_STATE.md](CURRENT_STATE.md) for a deployment / route / env-var snapshot.
 
-Last updated: 2026-05-27.
+Last updated: 2026-06-12.
 
 ---
 
 ## In progress
 
-*Nothing currently being actively worked on. All today's PRs merged.*
+- **Chat assistant — RAG foundation (PR 1 of 3).** Schema (migration 014 `rag_chunks` + pgvector HNSW, migration 015 chat-quota columns), `content/faq.md` seed corpus, bearer-protected `/api/rag/sources` + `/api/rag/embed` endpoints, local `bge-small-en-v1.5` embeddings via `@huggingface/transformers`. Foundation only — no chat UI, no `/api/chat` yet. DECISION 031. **Open as PR (TBD)**.
+- **Chat assistant — n8n ingest workflow (PR 2 of 3).** After PR 1 merges + `RAG_INGEST_TOKEN` + migrations are applied: schedule + Vercel deploy webhook → `/api/rag/sources` → chunker → `/api/rag/embed` → Postgres UPSERT into Supabase → error trigger to existing `error_handler` Slack alerter. Built via n8n MCP tools.
+- **Chat assistant — chat UI + `/api/chat` (PR 3 of 3).** Floating ChatWidget (replaces Support button), Vercel AI SDK 4.x streaming from Groq Llama 3.3 70B, quota gating (Anon 5/day, Free 50/day, Pro/Staff unlimited), system prompt covering support + advice + sales personas. "Talk to a human" link inside chat opens existing support modal.
 
 ---
 
@@ -21,6 +23,8 @@ Last updated: 2026-05-27.
 
 ### Manual / dashboard work (unblocked, just hasn't been done)
 
+- **Run Supabase migrations 014 + 015** on production (pgvector + `rag_chunks` table + chat-quota columns on `profiles`). Required before PR 2 of the chat work can populate the index. DECISION 031.
+- **Set `RAG_INGEST_TOKEN` on Vercel** to a fresh 32-byte hex secret (`openssl rand -hex 32`). Required before PR 2's n8n ingest can call `/api/rag/sources` or `/api/rag/embed`. Same value goes into n8n as an `httpHeaderAuth` credential during PR 2 setup. DECISION 031.
 - **Add `https://kairesume.fit/auth/callback` to Supabase dashboard → Auth → URL Configuration → Redirect URLs.** Required for the new forgot-password flow (DECISION 030). Without it, the PKCE exchange fails with "Invalid redirect URL" and the user lands on `/forgot-password?error=...`. A `*` wildcard works too but is broader than necessary.
 - **Add `TAVILY_API_KEY` to Vercel env vars.** Without this, the Tavily enrichment from DECISION 028 silently does nothing — every user gets the humanized-but-not-research-enriched cover letter from DECISION 027. Rotate the dev key first (it was pasted in chat).
 - **Disable Cloudflare's `Content-Signal: search=yes, ai-train=no` injection.** Contradicts our explicit AI allowlist in `robots.txt` (PR #35). Cloudflare dashboard → Security → Bots → AI Audit / Content Signals → toggle off.

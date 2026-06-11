@@ -333,3 +333,50 @@ Until now there was no self-serve password reset — users who forgot their pass
 **Manual setup required:** the Supabase dashboard's "Redirect URLs" allowlist must include `https://kairesume.fit/auth/callback` — otherwise the PKCE exchange will fail with an "Invalid redirect URL" error. Tracked in [`CURRENT_STATE.md`](CURRENT_STATE.md) Manual maintenance §3.
 
 **Why not Supabase's hosted UI?** The hosted UI is OK but doesn't match the rest of our auth screens (dark gradient cards, kairesume branding). Cost of a custom page is one component file per direction; we already have `AuthForm` as the pattern. Cheap.
+
+---
+
+### 031 · 2026-05-27 · Active
+
+**RAG chat foundation: pgvector + local `bge-small-en-v1.5` embeddings + n8n ingestion**
+
+The site is getting a chat assistant covering customer support + resume advice + pre-purchase Q&A. This entry documents the foundation (this PR — schema + endpoints, no UI). Inference + widget land in subsequent PRs.
+
+**$0 budget constraint.** Every component picked here uses an already-free resource:
+
+- **Vector store**: new `rag_chunks` table in the existing Supabase, using pgvector + HNSW index. No new infra. Migration 014.
+- **Embeddings**: `Xenova/bge-small-en-v1.5` (384-dim, L2-normalized) via `@huggingface/transformers`. Quantized ONNX weights (~30 MB) download from Hugging Face's free CDN on first cold start and cache in `/tmp` between warm invocations. No API key, no metered service.
+- **LLM** (PR 3): existing Groq Llama 3.3 70B credential.
+- **Ingestion orchestrator**: existing partner-owned n8n instance.
+- **Quota counters**: new columns on `profiles` (migration 015), cookie for anons.
+
+**Why local embeddings over a paid API**: text-embedding-3-small at $0.02/1M tokens would cost ~$0.01 per full reindex of our corpus (~50k tokens). Genuinely tiny. But it's still a credential + a billing relationship to manage. bge-small-en-v1.5 hits the retrieval-quality bar for FAQ-and-blog content easily (it's a top-rank model on the MTEB English benchmark in its size class), the 384-dim vectors are *smaller* than text-embedding-3-small's 1536 so pgvector is faster, and we avoid the dep entirely. Trade-off: the first cold start downloads weights (~16s in local testing; on Vercel the function gets `maxDuration: 60` to absorb it). Mitigated by a `GET /api/rag/embed` warm-up endpoint n8n calls before batch work.
+
+**Cross-trust between kairesume and partner-owned n8n**: shared bearer token `RAG_INGEST_TOKEN` (32-byte random secret) — env var on Vercel, `httpHeaderAuth` credential in n8n. The `/api/rag/sources` and `/api/rag/embed` endpoints both check it via `lib/auth/ingestToken.ts` using constant-time compare. No reliance on Supabase staff sessions or shared identity.
+
+**What ships in this PR (foundation only)**:
+- [`supabase/migrations/014_rag_chunks.sql`](../supabase/migrations/014_rag_chunks.sql) — pgvector extension, `rag_chunks(id, source, chunk_idx, content, embedding vector(384), updated_at)`, HNSW + source indexes, unique on (source, chunk_idx) for idempotent UPSERT.
+- [`supabase/migrations/015_profiles_chat_quota.sql`](../supabase/migrations/015_profiles_chat_quota.sql) — adds `chat_count_today int default 0`, `chat_reset_at timestamptz` to `profiles`. Lazy UTC-midnight reset.
+- [`content/faq.md`](../content/faq.md) — 25 entry seed covering pricing, payments, file formats, data storage, refunds, ATS basics, resume best practices.
+- [`lib/rag/chunker.ts`](../lib/rag/chunker.ts) — markdown-aware splitter (h2 boundaries → paragraph fallback for oversize). ~2800-char window, 400-char overlap. Tested against the seed corpus: 65 chunks, median 517 chars.
+- [`lib/rag/embed.ts`](../lib/rag/embed.ts) — `@huggingface/transformers` wrapper with lazy load + module-scoped promise cache.
+- [`lib/auth/ingestToken.ts`](../lib/auth/ingestToken.ts) — bearer-token check, constant-time compare.
+- [`app/api/rag/sources/route.ts`](../app/api/rag/sources/route.ts) — bearer-protected GET, returns `[{ source, content }]` for FAQ + blog.
+- [`app/api/rag/embed/route.ts`](../app/api/rag/embed/route.ts) — bearer-protected POST (batch up to 64, 4 KB per input) + unauth GET warm-up. `maxDuration: 60` for cold-start headroom.
+- `next.config.js` — adds `serverComponentsExternalPackages: ['@huggingface/transformers']` so the heavy package stays in `node_modules` instead of being bundled.
+
+**What's deferred to PR 2 (n8n ingest workflow)**:
+- n8n workflow: schedule + Vercel deploy webhook → call `/api/rag/sources` → chunk via Code node → call `/api/rag/embed` (batched) → Postgres UPSERT into Supabase via pooler → on error, call existing `error_handler` workflow.
+- Add Supabase Postgres credential to n8n (pooler URI + service role).
+- Add the `RAG_INGEST_TOKEN` httpHeaderAuth credential to n8n.
+
+**What's deferred to PR 3 (chat UI + inference)**:
+- `/api/chat` with Vercel AI SDK streaming + Groq Llama 3.3 70B.
+- `components/ChatWidget.tsx` floating bubble (replaces existing Support button; a "Talk to a human" link inside the chat opens the support modal).
+- Quota gating using migration 015's columns + new `kairesume_chat_usage` cookie.
+- System prompt covering all three personas (support / advice / sales) with refusal rules.
+
+**Manual setup after this PR merges**:
+1. Run migrations 014 + 015 on production Supabase.
+2. Generate a 32-byte random string and set `RAG_INGEST_TOKEN` on Vercel.
+3. Wait for redeploy. The endpoints are then live but `rag_chunks` is empty. Chat UI doesn't exist yet, so no user impact.
