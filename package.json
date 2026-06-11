@@ -9,7 +9,6 @@
     "lint": "unset npm_config_devdir && next lint"
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.2.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.105.4",
     "@turbodocx/html-to-docx": "1.19.0",

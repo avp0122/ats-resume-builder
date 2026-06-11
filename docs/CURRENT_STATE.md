@@ -55,8 +55,7 @@ Next.js 14.2.5 App Router + TypeScript + Tailwind + Supabase auth/db + Groq Llam
 | `POST /api/auth/forgot-password` | Anon | Send reset-email via Supabase (anti-enumerating) |
 | `POST /api/auth/reset-password` | Recovery session or signed-in | Apply new password via `updateUser` |
 | `GET /api/rag/sources` | Bearer (`RAG_INGEST_TOKEN`) | Returns FAQ + blog as `[{source, content}]` for n8n to ingest |
-| `POST /api/rag/embed` | Bearer (`RAG_INGEST_TOKEN`) | Local `bge-small-en-v1.5` → 384-dim vectors (batch up to 64) |
-| `GET /api/rag/embed` | None | Warm-up ping — preloads the embedding model into memory |
+| Supabase Edge Function `embed` | Bearer (`RAG_INGEST_TOKEN`) | Runs `gte-small` via `Supabase.ai.Session` — embedding stays in Supabase infra, not in Vercel functions. Deployed via `supabase functions deploy embed --no-verify-jwt`. URL: `https://<project>.supabase.co/functions/v1/embed`. |
 | `POST /api/checkout/{crypto,verify}` | Signed in | USDT TRC-20 / ERC-20 payment + verification |
 | `POST /api/support` | Anon | Support ticket submission |
 
@@ -122,7 +121,11 @@ All applied to production as of 2026-05-26.
 2. **Supabase dashboard — Site URL** → set to `https://kairesume.fit` (currently localhost for confirmation emails).
 3. **Supabase dashboard — Redirect URLs** → add `https://kairesume.fit/auth/callback` (required for the password-reset flow's PKCE exchange to succeed). The default `*` wildcard works too but is broader than necessary.
 4. **Supabase — run migrations 014 + 015** on production (pgvector + `rag_chunks` table + `profiles.chat_count_today` / `chat_reset_at` columns). Migrations apply cleanly; no downtime expected.
-5. **Vercel env var — `RAG_INGEST_TOKEN`** → set a 32-byte random secret (`openssl rand -hex 32`). Endpoints `/api/rag/{sources,embed}` return 503 until set. After PR 2 lands, the same value goes into n8n as an `httpHeaderAuth` credential.
+5. **Generate `RAG_INGEST_TOKEN`** → 32 random bytes (`openssl rand -hex 32`). One value, set in three places:
+   1. Vercel env var `RAG_INGEST_TOKEN` (gates `/api/rag/sources`)
+   2. Supabase secret `RAG_INGEST_TOKEN` (gates the `embed` Edge Function): `npx supabase secrets set RAG_INGEST_TOKEN=<value>`
+   3. (PR 2) n8n `httpHeaderAuth` credential — same value, single credential used for both endpoints
+6. **Deploy the `embed` Supabase Edge Function**: `npx supabase functions deploy embed --no-verify-jwt`. Source at `supabase/functions/embed/index.ts`. Returns 503 until step 5.2 is also done.
 6. **Google Search Console** — remove + re-add `/sitemap.xml` to force refresh.
 7. **Test fixtures** — pin `Liam_Sato_Cake_Resume.pdf` + `Jamal.Hamilton-Resume.pdf` into `/test-fixtures/`.
 8. **Vercel env var** — add `TAVILY_API_KEY` (with a rotated dev key) for the Tavily enrichment to actually fire.

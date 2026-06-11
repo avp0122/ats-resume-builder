@@ -24,7 +24,11 @@ Last updated: 2026-06-12.
 ### Manual / dashboard work (unblocked, just hasn't been done)
 
 - **Run Supabase migrations 014 + 015** on production (pgvector + `rag_chunks` table + chat-quota columns on `profiles`). Required before PR 2 of the chat work can populate the index. DECISION 031.
-- **Set `RAG_INGEST_TOKEN` on Vercel** to a fresh 32-byte hex secret (`openssl rand -hex 32`). Required before PR 2's n8n ingest can call `/api/rag/sources` or `/api/rag/embed`. Same value goes into n8n as an `httpHeaderAuth` credential during PR 2 setup. DECISION 031.
+- **Generate `RAG_INGEST_TOKEN`** (`openssl rand -hex 32`) and set in two places:
+  1. Vercel env var `RAG_INGEST_TOKEN` — gates `/api/rag/sources`
+  2. Supabase secret: `npx supabase secrets set RAG_INGEST_TOKEN=<value>` — gates the `embed` Edge Function
+  Same value goes into n8n as an `httpHeaderAuth` credential during PR 2 setup. DECISION 031.
+- **Deploy the `embed` Supabase Edge Function**: `npx supabase functions deploy embed --no-verify-jwt`. Source at `supabase/functions/embed/index.ts`. Required before PR 2's n8n ingest can produce vectors. DECISION 031.
 - **Add `https://kairesume.fit/auth/callback` to Supabase dashboard → Auth → URL Configuration → Redirect URLs.** Required for the new forgot-password flow (DECISION 030). Without it, the PKCE exchange fails with "Invalid redirect URL" and the user lands on `/forgot-password?error=...`. A `*` wildcard works too but is broader than necessary.
 - **Add `TAVILY_API_KEY` to Vercel env vars.** Without this, the Tavily enrichment from DECISION 028 silently does nothing — every user gets the humanized-but-not-research-enriched cover letter from DECISION 027. Rotate the dev key first (it was pasted in chat).
 - **Disable Cloudflare's `Content-Signal: search=yes, ai-train=no` injection.** Contradicts our explicit AI allowlist in `robots.txt` (PR #35). Cloudflare dashboard → Security → Bots → AI Audit / Content Signals → toggle off.
