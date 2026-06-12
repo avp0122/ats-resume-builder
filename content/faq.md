@@ -155,3 +155,11 @@ The fix is a single-column, no-graphics, standard-font (Arial / Calibri / Times)
 Any white-collar role where the application goes through an ATS — engineering, product, design, ops, finance, marketing, sales, healthcare. The keyword-density model applies almost universally.
 
 We're less useful for: roles where the application is "send your portfolio" (graphic design, creative writing), federal/government roles (different format requirements), or very senior executive roles where the resume is a formality and the network does the work.
+
+## What languages does kairesume work in?
+
+kairesume's output is currently English-only. You can paste a French, German, Spanish, or other-language job description and the underlying model (Llama 3.3 70B) will understand it correctly, but the rewritten resume + cover letter will come back in English. That's fine for the increasingly common pattern of "European candidate applying to a US/UK remote role in English" — and that's the use case we've optimised the prompts for.
+
+Non-English output is on the roadmap; it requires re-tuning the ATS-keyword scoring (the matched/missing keyword lists are language-aware in the prompt) and re-validating the page-break + glyph-handling on non-Latin scripts. No fixed ETA — drop a note via the "Talk to a human" link if your target market is non-English so we can prioritize.
+
+If your resume is in another language and you want the English output to retain proper-noun spellings (your name, employer names, university names), don't translate them yourself before uploading — leave them in their original form and the model will preserve them.
