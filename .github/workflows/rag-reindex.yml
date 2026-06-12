@@ -1,0 +1,38 @@
+# Fires the n8n RAG ingest workflow when the chat assistant's corpus
+# changes on master. Vercel's outgoing webhooks are Pro-tier only, so
+# we use GitHub Actions as the $0 deploy-time signal: when a content
+# edit lands on master, POST to n8n which re-pulls /api/rag/sources,
+# chunks, embeds via Supabase Edge Function, and UPSERTs into
+# rag_chunks.
+#
+# n8n also runs the same flow daily at 02:00 UTC as a safety net — so
+# this Action is purely an optimisation for "make my new FAQ entry
+# searchable within a minute" rather than a correctness requirement.
+#
+# The n8n webhook URL is intentionally public (authentication: 'none'
+# in the workflow) — the worst a third party can do by hammering it is
+# burn Supabase Edge Function quota, which is rate-limited upstream.
+# See DECISION 031 in docs/DECISIONS.md.
+
+name: RAG reindex
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'content/faq.md'
+      - 'content/blog/**'
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST to n8n webhook
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 15 \
+            --retry 3 --retry-delay 5 --retry-all-errors \
+            -X POST \
+            -H 'Content-Type: application/json' \
+            --data "$(printf '{"source":"github-actions","commit":"%s","ref":"%s"}' "$GITHUB_SHA" "$GITHUB_REF")" \
+            https://n8n.jameszk.space/webhook/kairesume-deploy
