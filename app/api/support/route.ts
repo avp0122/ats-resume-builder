@@ -27,6 +27,87 @@ function clientIp(request: NextRequest): string {
   return request.headers.get('x-real-ip') || 'unknown';
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Email the operator when a support ticket is submitted.
+ *
+ * Until now the popup only wrote a row to `support_tickets` — there was no
+ * outbound email, so "configure forwarding to my inbox" never had anything
+ * to forward. This sends a notification via the Resend HTTP API (no SDK
+ * dependency — same fetch pattern as our Groq/embed calls).
+ *
+ * Gated on env vars (no-op if unset, like the Tavily integration):
+ *   - RESEND_API_KEY     — Resend API key
+ *   - SUPPORT_NOTIFY_EMAIL — where to send the notification (operator inbox)
+ *   - SUPPORT_FROM_EMAIL  — optional From; defaults to Resend's shared
+ *       onboarding sender, which can email your own verified account email
+ *       without setting up a domain first.
+ *
+ * `reply_to` is set to the customer's email so the operator can reply
+ * straight from the notification. Never throws — a failed notification must
+ * not fail the ticket (it's already saved).
+ */
+async function notifyOperator(ticket: {
+  ticketId: string;
+  subject: string;
+  message: string;
+  email: string;
+  phone: string | null;
+  signedIn: boolean;
+  ip: string;
+}): Promise<{ sent: boolean; reason?: string }> {
+  const apiKey = process.env.RESEND_API_KEY;
+  const to = process.env.SUPPORT_NOTIFY_EMAIL;
+  if (!apiKey || !to) return { sent: false, reason: 'not-configured' };
+  const from = process.env.SUPPORT_FROM_EMAIL || 'kairesume support <onboarding@resend.dev>';
+
+  const html = `
+    <h2>New support ticket</h2>
+    <p><strong>Subject:</strong> ${escapeHtml(ticket.subject)}</p>
+    <p><strong>From:</strong> ${escapeHtml(ticket.email)}${
+      ticket.signedIn ? ' (signed-in user)' : ' (anonymous)'
+    }</p>
+    ${ticket.phone ? `<p><strong>Phone:</strong> ${escapeHtml(ticket.phone)}</p>` : ''}
+    <p><strong>Message:</strong></p>
+    <pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(ticket.message)}</pre>
+    <hr />
+    <p style="color:#888;font-size:12px">Ticket ${escapeHtml(ticket.ticketId)} · IP ${escapeHtml(ticket.ip)}</p>
+  `;
+
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        reply_to: ticket.email,
+        subject: `[kairesume support] ${ticket.subject}`,
+        html,
+      }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      console.error('support email failed:', res.status, detail.slice(0, 300));
+      return { sent: false, reason: `resend-${res.status}` };
+    }
+    return { sent: true };
+  } catch (e) {
+    console.error('support email error:', e);
+    return { sent: false, reason: 'exception' };
+  }
+}
+
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json(
@@ -132,6 +213,18 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+
+  // Notify the operator by email (best-effort — the ticket is already
+  // saved, so a failed/disabled notification never fails the request).
+  await notifyOperator({
+    ticketId: String(data.id),
+    subject,
+    message,
+    email: resolvedEmail,
+    phone: providedPhone || null,
+    signedIn: Boolean(userId),
+    ip,
+  });
 
   return NextResponse.json({ ok: true, ticketId: data.id, createdAt: data.created_at });
 }

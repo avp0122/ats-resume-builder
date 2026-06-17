@@ -112,6 +112,9 @@ All applied to production as of 2026-05-26 (migrations 014–016 tracked under c
 | `TRONGRID_API_KEY` | Lifts TRC-20 verification rate limits | Optional |
 | `TAVILY_API_KEY` | Cover letter company-research enrichment | **Optional** — feature silently disabled if unset |
 | `RAG_INGEST_TOKEN` | Bearer secret for n8n → `/api/rag/{sources,embed}` | **Yes** for the chat ingest pipeline (PR 2+). 32 random bytes, hex-encoded. Endpoints return 503 until set. |
+| `RESEND_API_KEY` | Resend API key for support-ticket email notifications | **Optional** — `/api/support` emails the operator only when this AND `SUPPORT_NOTIFY_EMAIL` are set; otherwise it just saves the ticket to the DB (no email). |
+| `SUPPORT_NOTIFY_EMAIL` | Operator inbox that receives a notification on each new support ticket | **Optional** — required alongside `RESEND_API_KEY` for support emails. |
+| `SUPPORT_FROM_EMAIL` | From address for support notifications | Optional — defaults to Resend's shared `onboarding@resend.dev` (works to your own verified account email without domain setup). |
 
 ## Active feature flags / runtime conditions
 
