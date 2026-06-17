@@ -411,3 +411,20 @@ Completes DECISION 031. The foundation (schema + ingest endpoints, PR 1) and the
 1. Run migration 016 (`match_rag_chunks`) on production Supabase. Until then the chat works but answers ungrounded.
 2. Confirm migrations 014 + 015, `RAG_INGEST_TOKEN` (Vercel + Supabase secret), and the `embed` Edge Function from DECISION 031's setup are actually applied (the n8n workflow being active implies they are, but verify `rag_chunks` has rows).
 3. No new env var beyond what DECISION 031 already requires (`GROQ_API_KEY`, `RAG_INGEST_TOKEN`, `NEXT_PUBLIC_SUPABASE_URL`).
+
+**Amendment (2026-06-17) — embed Edge Function free-tier batch limit = 2.** Bringing the pipeline live surfaced a hard constraint: the Supabase `embed` Edge Function (free tier) reliably embeds only **2 inputs per call**; ≥3 returns `546 WORKER_RESOURCE_LIMIT` (loading `gte-small` leaves almost no compute headroom). The n8n "Chunk and Batch" `BATCH_SIZE` was 32 → every ingest run failed at the embed step, leaving `rag_chunks` empty (chat answered ungrounded but didn't error, as designed). Fix: `BATCH_SIZE=2`. Also burned time on two wiring gotchas — Vercel env changes need a redeploy, and n8n's Header Auth credential value must include the literal `Bearer ` prefix (n8n doesn't add it). Chat verified live & grounded once `rag_chunks` was seeded.
+
+---
+
+### 033 · 2026-06-17 · Active
+
+**Support-ticket email notifications via Resend (gated, no SDK)**
+
+The support popup ([`/api/support`](../app/api/support/route.ts)) only ever inserted a `support_tickets` row — no email was sent, so the operator's Cloudflare Email Routing forward (`support@kairesume.fit` → personal Gmail) had nothing to forward on a popup submission. Added a best-effort operator notification via the **Resend HTTP API** (plain `fetch`, no new dependency — same pattern as Groq/embed).
+
+- **Gated on env** (`RESEND_API_KEY` + `SUPPORT_NOTIFY_EMAIL`); no-op if unset, mirroring the Tavily integration. Optional `SUPPORT_FROM_EMAIL` defaults to Resend's shared `onboarding@resend.dev`.
+- **`reply_to` = the customer's email**, so the operator replies directly from the notification.
+- **Never throws** — the ticket is already saved, so a failed/disabled email never fails the request.
+- **Deliverability notes:** with the `onboarding@resend.dev` sender, Resend only delivers to the Resend account's own email — to send to an arbitrary address (e.g. `support@kairesume.fit`) you must verify a sender domain. Separately, gmail→(Cloudflare relay)→gmail forwards often land in Gmail **Spam** (DKIM/SPF don't align through the forwarder); a Gmail filter on `to:support@kairesume.fit` → "Never send to Spam" is the fix.
+
+Two complementary inbound channels now exist: customers can email `support@kairesume.fit` directly (Cloudflare forwards) **or** use the popup (saved to DB + Resend notification).

@@ -8,12 +8,16 @@ Last updated: 2026-06-17.
 
 ## In progress
 
-- **Chat assistant — chat UI + `/api/chat` (PR 3 of 3).** DONE on branch `claude/rag-chat-ui`, typechecks + `next build` green. Floating ChatWidget replaces the Support button (`SupportPopup` reused behind "Talk to a human"); `/api/chat` streams Groq Llama 3.3 70B via Vercel AI SDK 4.x (`ai@^4` + `@ai-sdk/groq@^1`); quota gate before the LLM call (Anon 5/day cookie, Free 50/day on `profiles`, Pro/Staff unlimited); retrieval via `embed` Edge Function + new `match_rag_chunks` RPC (migration 016, non-fatal on failure); 3-persona system prompt. DECISION 032. **Open as PR (TBD); needs migration 016 applied for grounded answers.**
+- **n8n daily reindex — publish `BATCH_SIZE=2`.** The chat is live and grounded (`rag_chunks` seeded directly), but the n8n auto-refresh still fails until the `BATCH_SIZE=2` change (staged in the editor draft via MCP) is **Published** in the n8n UI, and the Upsert Chunks query is confirmed as an Expression. Root cause: the embed Edge Function (free tier) only handles ~2 inputs/call. See [CURRENT_STATE.md](CURRENT_STATE.md) Manual maintenance §4.
 
 ---
 
-## Recently completed (chat foundation)
+## Recently completed (RAG chat assistant)
 
+- **2026-06-17** — Chat UI + `/api/chat` (PR 3 of 3): ChatWidget (Vercel AI SDK 4 `useChat`) replaces the Support button; quota-gated, RAG-grounded Groq stream; `match_rag_chunks` RPC (migration 016). · [PR #59, merged] · DECISION 032. **Live in production** (`rag_chunks` seeded, retrieval grounding verified).
+- **2026-06-17** — Support-ticket email notifications via Resend (gated on `RESEND_API_KEY` + `SUPPORT_NOTIFY_EMAIL`). · [PR #61, merged] · DECISION 033.
+- **2026-06-17** — Bump smallest UI font sizes (wallet address, "Talk to a human", etc.). · [PR #62, merged]
+- **2026-06-17** — Silence `sharp` webpack warning from `@turbodocx/html-to-docx`. · [PR #60, merged]
 - **Chat assistant — RAG foundation (PR 1 of 3).** Schema (014 `rag_chunks` + HNSW, 015 chat-quota cols), `content/faq.md` corpus, bearer `/api/rag/sources`, `gte-small` embeddings via Supabase Edge Function. DECISION 031. **Merged (#56, #57).**
 - **Chat assistant — n8n ingest workflow (PR 2 of 3).** Schedule + Vercel-deploy webhook → `/api/rag/sources` → chunk → `embed` Edge Function → UPSERT into `rag_chunks` → error trigger. **Built & active** (n8n workflow `VHF3xt11ExE3JiQW`).
 

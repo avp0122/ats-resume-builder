@@ -1,6 +1,6 @@
 # Architecture
 
-> Last reviewed: 2026-05-26. Keep this file in sync as the system changes — most ground truths live here, not in scattered comments.
+> Last reviewed: 2026-06-17. Keep this file in sync as the system changes — most ground truths live here, not in scattered comments.
 
 ## Overview
 
@@ -12,6 +12,8 @@
 - A ZIP containing the resume + cover letter as both **PDF** and **DOCX**.
 
 Anonymous visitors get one free generation with a blurred preview (must sign up to unlock the download). Signed-in free accounts get 10 generations per month. Pro is unlimited at $4.99/mo, $11.98/3mo (-20%), or $41.92/yr (-30%), paid in USDT on Tron (TRC-20) or Ethereum (ERC-20).
+
+The site also ships a **RAG chat assistant** (floating widget) that answers support / résumé-advice / pre-sales questions grounded in the FAQ + blog via pgvector retrieval. See [Chat assistant (RAG)](#chat-assistant-rag).
 
 ## Tech stack
 
@@ -37,9 +39,11 @@ Anonymous visitors get one free generation with a blurred preview (must sign up 
 ├── app/                          # Next.js 14 App Router
 │   ├── api/
 │   │   ├── auth/{signup,signin,signout}/route.ts
+│   │   ├── chat/route.ts         # RAG chat: quota → retrieve → Groq stream
 │   │   ├── checkout/{crypto,verify}/route.ts
 │   │   ├── generate/route.ts     # main LLM pipeline
-│   │   ├── support/route.ts
+│   │   ├── rag/sources/route.ts  # bearer-protected corpus feed for n8n
+│   │   ├── support/route.ts      # ticket insert + Resend notification
 │   │   └── usage/route.ts        # quota lookup (drives the home page banner)
 │   ├── account/                  # signed-in dashboard
 │   ├── checkout/                 # crypto payment page
@@ -58,7 +62,8 @@ Anonymous visitors get one free generation with a blurred preview (must sign up 
 │   ├── Navbar.tsx  Footer.tsx
 │   ├── PricingCard.tsx           # multi-tier picker
 │   ├── ResumePreview.tsx         # blurred-when-anonymous preview
-│   ├── SupportWidget.tsx         # floating bottom-right popup
+│   ├── ChatWidget.tsx            # floating RAG chat (Vercel AI SDK useChat)
+│   ├── SupportWidget.tsx         # support form; SupportPopup reused by chat
 │   └── RouteProgress.tsx         # animated top progress bar
 │
 ├── lib/                          # framework-agnostic logic
@@ -73,10 +78,16 @@ Anonymous visitors get one free generation with a blurred preview (must sign up 
 │   ├── usage.ts  anonId.ts       # signed HTTP-only cookies (counter + anon id)
 │   ├── plan.ts                   # effectivePlan() + download-allowed logic
 │   ├── nav.ts                    # programmatic route-progress trigger
+│   ├── chatUsage.ts              # anonymous chat-quota cookie (daily)
+│   ├── rag/                      # chat RAG
+│   │   ├── retrieve.ts           # embed query + match_rag_chunks RPC
+│   │   ├── systemPrompt.ts       # 3-persona prompt + context injection
+│   │   └── chatQuota.ts          # per-day chat quota (cookie + DB)
 │   └── supabase/{client,server,admin}.ts
 │
 ├── supabase/
 │   ├── schema.sql                # canonical schema (fresh installs)
+│   ├── functions/embed/index.ts  # gte-small embeddings Edge Function
 │   └── migrations/00N_*.sql      # ordered, idempotent migrations
 │
 ├── docs/                         # ← you're here
@@ -153,6 +164,26 @@ client-side render
      JSZip → <role>_<company>_<fullname>.zip { 2x pdf, 2x docx }
 ```
 
+## Chat assistant (RAG)
+
+A floating `ChatWidget` (replaces the old standalone Support button) streams answers from `/api/chat`, grounded in retrieved FAQ + blog passages. Split into offline ingestion and runtime query (full diagrams in [README.md](../README.md)).
+
+**Ingestion (n8n, partner-owned instance):** daily cron + a Vercel-deploy webhook trigger →
+1. `GET /api/rag/sources` (bearer `RAG_INGEST_TOKEN`) returns FAQ + blog markdown as `[{source, content}]`.
+2. A Code node chunks on `##` boundaries (~2800-char windows, 400 overlap), **batched in groups of 2**.
+3. Each batch is embedded by the Supabase Edge Function `embed` (`gte-small`, 384-dim).
+4. Vectors are bulk-UPSERTed into `rag_chunks` with `on conflict (source, chunk_idx)`; stale rows (older than the run) are deleted. Idempotent.
+
+**Query (`app/api/chat/route.ts`, nodejs runtime):**
+1. **Quota gate before the LLM call** ([`lib/rag/chatQuota.ts`](../lib/rag/chatQuota.ts)): anon 5/day via `kairesume_chat_usage` cookie ([`lib/chatUsage.ts`](../lib/chatUsage.ts)); free signed-in 50/day via `profiles.chat_count_today` + `chat_reset_at` (lazy UTC reset); Pro/Staff unlimited. Limits in [`lib/pricing.ts`](../lib/pricing.ts).
+2. **Retrieve** ([`lib/rag/retrieve.ts`](../lib/rag/retrieve.ts)): embed the latest user message via the `embed` Edge Function, then `match_rag_chunks(query_embedding, match_count)` RPC (migration 016) for cosine top-K over the HNSW index. **Non-fatal** — failures degrade to an ungrounded answer rather than 500.
+3. **Prompt** ([`lib/rag/systemPrompt.ts`](../lib/rag/systemPrompt.ts)): one assistant, three personas (support / advice / sales) with refusal + grounding rules; retrieved passages injected as a CONTEXT block.
+4. **Stream**: `streamText` from Groq `llama-3.3-70b-versatile` via the Vercel AI SDK, returned as `toDataStreamResponse()` and consumed by `useChat` in the widget.
+
+**Schema:** migration `014` (`rag_chunks` + pgvector + HNSW cosine index), `015` (chat-quota columns on `profiles`), `016` (`match_rag_chunks` RPC, service-role only). Table is server-only (no RLS).
+
+**$0 + free-tier constraints:** vector store = pgvector in the existing Supabase; embeddings run on Supabase's built-in `gte-small` (no embedding bill); inference reuses the Groq key. The `embed` Edge Function reliably handles **2 inputs per call** (≥3 → `546 WORKER_RESOURCE_LIMIT`), which sets the n8n batch size. Embeddings live on Supabase, not Vercel, because the local ONNX runtime (~513 MB) exceeded Vercel's 250 MB function limit.
+
 ## Important constraints
 
 ### Groq token budget (8000 → 12000)
@@ -209,3 +240,7 @@ Required in production (set in Vercel dashboard):
 | `ETHSCAN_API_KEY` (or `ETHERSCAN_API_KEY`, `BSCSCAN_API_KEY`) | Etherscan V2 unified API key for ERC-20 verification |
 | `TRONGRID_API_KEY` | Optional; lifts rate limits on TRC-20 verification |
 | `TAVILY_API_KEY` | Optional; enables external company research for the cover letter. Without it the cover letter is generated from the JD alone. Free tier: 1000 queries/month. |
+| `RAG_INGEST_TOKEN` | Shared bearer secret (constant-time compared) gating `/api/rag/sources`, the `embed` Edge Function, and the n8n credential. Required for the chat ingest + retrieval pipeline. |
+| `RESEND_API_KEY` + `SUPPORT_NOTIFY_EMAIL` | Optional; `/api/support` emails the operator on each new ticket only when both are set. Optional `SUPPORT_FROM_EMAIL` (defaults to Resend's `onboarding@resend.dev`). |
+
+> The `embed` Edge Function also needs `RAG_INGEST_TOKEN` set as a **Supabase secret** (`supabase secrets set RAG_INGEST_TOKEN=…`), not a Vercel env var.

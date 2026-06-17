@@ -2,7 +2,7 @@
 
 > Operational snapshot. **Rewritten in full** whenever something material changes — not append-only. For history see [DECISIONS.md](DECISIONS.md). For active work see [TASKS.md](TASKS.md). For architecture see [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Last updated: 2026-06-17 (chat assistant PR 3 — `/api/chat` + ChatWidget on branch `claude/rag-chat-ui`).
+Last updated: 2026-06-17 (RAG chat assistant **live in production**; support-ticket email notifications shipped).
 
 ---
 
@@ -121,21 +121,20 @@ All applied to production as of 2026-05-26 (migrations 014–016 tracked under c
 - **Tavily enrichment** runs only when `TAVILY_API_KEY` is set AND the LLM extracted a non-empty `jobCompany` from the JD.
 - **Staff features** (refresh button on `/jobs`, `/jobs` access at all) gated server-side on `profiles.plan === 'staff'`.
 - **Anonymous flow** continues to work without Supabase env vars (local dev).
+- **RAG chat (`/api/chat`)** is **live**: `rag_chunks` is seeded (FAQ + 5 blog posts), retrieval grounds answers. Retrieval is non-fatal — if the embed Edge Function or RPC is unavailable, the chat answers ungrounded instead of erroring.
+- **Support email** fires only when `RESEND_API_KEY` + `SUPPORT_NOTIFY_EMAIL` are set; otherwise `/api/support` just saves the ticket.
 
 ## Manual maintenance (currently outstanding)
 
 1. **Cloudflare** — disable `Content-Signal` auto-injection on robots.txt (Security → Bots → AI Audit).
 2. **Supabase dashboard — Site URL** → set to `https://kairesume.fit` (currently localhost for confirmation emails).
 3. **Supabase dashboard — Redirect URLs** → add `https://kairesume.fit/auth/callback` (required for the password-reset flow's PKCE exchange to succeed). The default `*` wildcard works too but is broader than necessary.
-4. **Supabase — run migrations 014 + 015 + 016** on production (pgvector + `rag_chunks` table + `profiles.chat_count_today` / `chat_reset_at` columns + `match_rag_chunks` retrieval RPC). Migrations apply cleanly; no downtime expected. **016 is required for `/api/chat` retrieval** — without it the chat answers without grounding (it degrades, doesn't error).
-5. **Generate `RAG_INGEST_TOKEN`** → 32 random bytes (`openssl rand -hex 32`). One value, set in three places:
-   1. Vercel env var `RAG_INGEST_TOKEN` (gates `/api/rag/sources`)
-   2. Supabase secret `RAG_INGEST_TOKEN` (gates the `embed` Edge Function): `npx supabase secrets set RAG_INGEST_TOKEN=<value>`
-   3. (PR 2) n8n `httpHeaderAuth` credential — same value, single credential used for both endpoints
-6. **Deploy the `embed` Supabase Edge Function**: `npx supabase functions deploy embed --no-verify-jwt`. Source at `supabase/functions/embed/index.ts`. Returns 503 until step 5.2 is also done.
+4. **n8n daily reindex — publish `BATCH_SIZE=2`.** The embed Edge Function (free tier) only handles ~2 inputs/call (≥3 → `546 WORKER_RESOURCE_LIMIT`); the n8n "Chunk and Batch" node must use `BATCH_SIZE=2`. Staged in the editor draft via MCP — **needs Publishing in the n8n UI** (and confirm the Upsert Chunks query is an Expression). Until then the daily auto-refresh fails, but `rag_chunks` is seeded so the chat works. **Done:** migrations 014–016 applied, `RAG_INGEST_TOKEN` set in all three places, `embed` Edge Function deployed, chat live & grounded.
+5. **Rotate `RAG_INGEST_TOKEN`** (optional) — it was shared in a chat session; regenerate and update all three places (Vercel env, Supabase secret, n8n credential) when convenient.
 6. **Google Search Console** — remove + re-add `/sitemap.xml` to force refresh.
 7. **Test fixtures** — pin `Liam_Sato_Cake_Resume.pdf` + `Jamal.Hamilton-Resume.pdf` into `/test-fixtures/`.
 8. **Vercel env var** — add `TAVILY_API_KEY` (with a rotated dev key) for the Tavily enrichment to actually fire.
+9. **Support email (optional)** — set `RESEND_API_KEY` + `SUPPORT_NOTIFY_EMAIL` to email the operator on new support tickets. With Resend's default `onboarding@resend.dev` sender, `SUPPORT_NOTIFY_EMAIL` must be your Resend account email; to send to `support@kairesume.fit` (Cloudflare-forwarded), verify a sender domain and set `SUPPORT_FROM_EMAIL`.
 
 ## How to grant unlimited access to a user
 
