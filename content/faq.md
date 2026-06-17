@@ -18,6 +18,12 @@ You give us two things: a job description (paste the text) and your resume (uplo
 
 Files are processed in-memory and discarded after generation. For signed-in users we optionally save the extracted resume text on your profile so you only have to upload once.
 
+## Is there a chat assistant I can ask questions?
+
+Yes — there's a chat bubble in the bottom-right of every page ("Ask kairesume"). It answers questions about resumes, ATS scoring, pricing, payments, and how the product works, and its answers are grounded in this FAQ plus our blog so they stay accurate. Anonymous visitors get 5 messages per day, signed-in free accounts get 50 per day, and Pro/Staff are unlimited.
+
+For anything account-specific — a billing question, a bug, or a refund — use the "Talk to a human" link inside the chat, or email support@kairesume.fit, and a real person will follow up. The assistant will never ask for your password or payment details, and you shouldn't share those in chat.
+
 ## How many free generations do I get?
 
 Anonymous visitors (no signup) get 1 free generation per browser. Signed-in free accounts get 10 generations per month. Pro and Staff plans are unlimited. There's no credit card required at any of these tiers — the anonymous and free signed-in plans are genuinely free.

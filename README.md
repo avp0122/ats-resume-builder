@@ -1,269 +1,223 @@
-# ATS Resume & Cover Letter Generator
+# kairesume — AI ATS resume builder + RAG chat assistant
 
-A production-ready web application that generates ATS-optimized resumes and tailored cover letters using AI. Paste a job description and your resume, and get professional documents ready for submission.
+[![Live](https://img.shields.io/badge/live-kairesume.fit-6e56cf)](https://kairesume.fit)
 
-## ✨ Features
+**kairesume** is a production web app that rewrites a résumé against any job description, scores it for ATS keyword match, drafts a tailored cover letter, and answers product/résumé questions through a **retrieval-augmented (RAG) chat assistant** — all on a deliberately **$0 infrastructure budget**.
 
-- **ATS-Optimized Resumes**: Rewrites your resume with job description keywords while maintaining ATS-friendly formatting
-- **Tailored Cover Letters**: Generates personalized 3-4 paragraph cover letters aligned with job requirements
-- **PDF Download**: Client-side PDF generation using html2pdf.js
-- **Copy HTML**: Easily copy the generated HTML for use elsewhere
-- **Sample Data**: Load sample JD/resume to test the app instantly
-- **Responsive Design**: Works perfectly on mobile (320px+) and desktop
-- **Smart Caching**: Caches results for 5 minutes to reduce API calls
-- **Retry Logic**: Automatic retries with exponential backoff on API failures
-- **Fallback Support**: Falls back from Groq to Google Gemini if primary fails
-
-## 🛠️ Tech Stack
-
-- **Framework**: Next.js 14 with App Router
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **AI/LLM**: Groq API (llama3-70b-8192) with Google Gemini fallback
-- **PDF Generation**: html2pdf.js (client-side)
-- **Hosting**: Vercel-ready (serverless functions)
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Node.js 18+ 
-- npm or yarn
-- Free API key from [Groq](https://console.groq.com/keys) or [Google AI Studio](https://aistudio.google.com/app/apikey)
-
-### Installation
-
-1. **Clone or navigate to the project directory**
-   ```bash
-   cd ats-gen
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**
-   
-   Copy the example env file and add your API keys:
-   ```bash
-   cp .env.local.example .env.local
-   ```
-   
-   Edit `.env.local`:
-   ```env
-   GROQ_API_KEY=your_groq_api_key_here
-   # Optional fallback:
-   GEMINI_API_KEY=your_gemini_api_key_here
-   ```
-
-4. **Run the development server**
-   ```bash
-   npm run dev
-   ```
-
-5. **Open in browser**
-   
-   Navigate to [https://kairesume.fit](https://kairesume.fit)
-
-## 📖 Usage
-
-1. **Paste Job Description**: Copy and paste the full job description into the first text area
-2. **Paste Your Resume**: Paste your current resume text into the second text area
-3. **Click Generate**: Wait for the AI to process (typically 5-15 seconds)
-4. **Review Results**: Check the ATS-optimized resume and cover letter previews
-5. **Download PDFs**: Click "Download PDF" for each document
-6. **Optional - Copy HTML**: Use "Copy HTML" to get the raw HTML code
-
-### Sample Data
-
-Click "Load Sample Data" to instantly populate the form with example content for testing.
-
-## 🏗️ Project Structure
-
-```
-ats-gen/
-├── app/
-│   ├── page.tsx                 # Main UI component
-│   ├── layout.tsx              # Root layout with metadata
-│   ├── globals.css             # Global styles
-│   └── api/
-│       └── generate/
-│           └── route.ts        # API endpoint for generation
-├── lib/
-│   ├── llm.ts                  # LLM client (Groq + Gemini)
-│   ├── prompts.ts              # ATS optimization prompt template
-│   └── utils.ts                # Helper utilities
-├── components/
-│   ├── ResumePreview.tsx       # Preview + download component
-│   └── LoadingSpinner.tsx      # Loading state component
-├── public/
-│   └── ats-template.html       # Reference template (optional)
-├── .env.local.example          # Environment variable template
-├── next.config.js              # Next.js configuration
-├── tailwind.config.ts          # Tailwind CSS configuration
-├── tsconfig.json               # TypeScript configuration
-└── README.md                   # This file
-```
-
-## 🔑 API Keys
-
-### Getting a Free Groq API Key
-
-1. Visit [https://console.groq.com/keys](https://console.groq.com/keys)
-2. Sign up or log in
-3. Create a new API key
-4. Copy the key to your `.env.local` file
-
-Groq offers generous free tier limits suitable for development and personal use.
-
-### Getting a Free Google Gemini API Key (Optional Fallback)
-
-1. Visit [https://aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
-2. Sign in with your Google account
-3. Click "Create API Key"
-4. Copy the key to your `.env.local` file
-
-## 🌐 Deployment to Vercel
-
-1. **Push to GitHub** (or connect directly in Vercel dashboard)
-
-2. **Connect to Vercel**
-   - Go to [vercel.com](https://vercel.com)
-   - Import your repository
-   - Configure environment variables:
-     - `GROQ_API_KEY`
-     - `GEMINI_API_KEY` (optional)
-
-3. **Deploy**
-   - Click "Deploy"
-   - Vercel will automatically build and deploy your app
-
-4. **Production URL**
-   - Your app will be live at `https://your-app.vercel.app`
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GROQ_API_KEY` | Yes | Groq API key for LLM access |
-| `GEMINI_API_KEY` | No | Google Gemini API key (fallback) |
-
-### Model Settings
-
-The app uses these default settings for deterministic output:
-- **Model**: llama3-70b-8192 (Groq) / gemini-1.5-flash (fallback)
-- **Max Tokens**: 2500
-- **Temperature**: 0.3
-- **Cache TTL**: 5 minutes
-
-## 🎯 ATS Best Practices
-
-The generated resumes follow these ATS guidelines:
-
-✅ **Do:**
-- Use standard section headings (Professional Summary, Skills, Experience, Education)
-- Include exact keywords from the job description
-- Use simple HTML formatting (`<h1>`, `<h2>`, `<p>`, `<ul>`, `<li>`)
-- Quantify achievements with metrics
-- Start bullet points with action verbs
-- Use standard date formats (MMM YYYY – MMM YYYY)
-
-❌ **Don't:**
-- Use tables, columns, or complex layouts
-- Include graphics, icons, or images
-- Use headers/footers
-- Keyword stuff unnaturally
-- Use non-standard fonts or formatting
-
-## 🐛 Troubleshooting
-
-### "Failed to connect to AI service"
-- Check your internet connection
-- Verify your API key is correct in `.env.local`
-- Ensure you haven't exceeded rate limits
-
-### "Received invalid response from AI service"
-- This can happen occasionally with LLMs
-- Click "Generate" again to retry
-- The app has built-in retry logic for transient errors
-
-### PDF download not working
-- Ensure pop-ups are allowed for https://kairesume.fit
-- Try a different browser
-- Check browser console for errors
-
-### Build errors
-```bash
-# Clear cache and reinstall
-rm -rf node_modules .next
-npm install
-npm run build
-```
-
-### TypeScript errors
-```bash
-# Run type checking
-npx tsc --noEmit
-```
-
-## 📝 Scripts
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start development server |
-| `npm run build` | Build for production |
-| `npm run start` | Start production server |
-| `npm run lint` | Run ESLint |
-
-## 🧪 Testing
-
-### Manual Testing Checklist
-
-- [ ] Input validation (empty fields, short inputs)
-- [ ] Generate button shows loading state
-- [ ] Results display correctly
-- [ ] PDF downloads work for both resume and cover letter
-- [ ] Copy HTML functionality works
-- [ ] Error messages display user-friendly text
-- [ ] Mobile responsive (test on 320px width)
-- [ ] Sample data loads correctly
-- [ ] Retry logic works (disconnect network temporarily)
-
-## 🔒 Security Notes
-
-- API keys are stored server-side only (in environment variables)
-- No user data is persisted (stateless application)
-- All PDF generation happens client-side
-- Input validation prevents empty/minimal submissions
-
-## 📄 License
-
-MIT License - feel free to use this for personal or commercial projects.
-
-## 🤝 Contributing
-
-This is an MVP starter template. Potential improvements:
-
-- Add file upload support (PDF/DOCX parsing)
-- Implement dark mode toggle
-- Add Vercel Web Analytics
-- Multiple resume templates
-- Export to Word format
-- User history/session storage
-- Custom prompt editing
-
-## 🙏 Acknowledgments
-
-- [Groq](https://groq.com) for fast, free LLM inference
-- [Next.js](https://nextjs.org) for the excellent framework
-- [html2pdf.js](https://github.com/eKoopmans/html2pdf.js) for client-side PDF generation
-- [Tailwind CSS](https://tailwindcss.com) for rapid UI development
+> Live: **https://kairesume.fit**
 
 ---
 
-**Built with ❤️ for job seekers everywhere**
+## What it does
 
-For issues or questions, please check the troubleshooting section or review the code comments.
+- **ATS-optimized résumé rewrite** — pastes a job description + your résumé (PDF/DOCX) and returns an ATS-clean rewrite tuned to the JD's keywords.
+- **Tailored cover letter** — a 3–4 paragraph letter, optionally enriched with live company research (Tavily).
+- **ATS match score** — 0–100 with matched / missing keyword breakdown.
+- **Download bundle** — a ZIP with résumé + cover letter as both PDF and DOCX.
+- **RAG chat assistant** — a floating widget that answers support / résumé-advice / pre-sales questions, grounded in the site's FAQ + blog via vector search.
+- **Accounts, quotas, payments** — Supabase auth, free-tier quotas, and Pro upgrades paid in USDT (TRC-20 / ERC-20), verified on-chain.
+
+---
+
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| Framework | Next.js 14 (App Router) + TypeScript |
+| Styling | Tailwind CSS |
+| Auth + DB | Supabase (Postgres + Auth + **pgvector** + Edge Functions) |
+| LLM | Groq · `llama-3.3-70b-versatile` |
+| Chat streaming | Vercel AI SDK 4 (`ai`, `@ai-sdk/groq`) |
+| Embeddings | `gte-small` (384-dim) via a Supabase Edge Function |
+| Ingestion orchestrator | n8n (schedule + deploy webhook) |
+| File extraction | `pdf-parse` (PDF) · `mammoth` (DOCX) |
+| Document render | `html2pdf.js` (PDF) · `@turbodocx/html-to-docx` (DOCX) |
+| Payments | Etherscan V2 (EVM) + TronGrid (TRC-20) |
+| Email | Resend (support notifications) + Cloudflare Email Routing (inbound) |
+| Hosting / CDN | Vercel + Cloudflare |
+
+---
+
+## System architecture
+
+```mermaid
+flowchart TB
+  subgraph Browser["Browser (React / Next client)"]
+    Home["Home — paste JD + upload résumé"]
+    Chat["ChatWidget — useChat stream"]
+    Acct["Auth · Account · Checkout"]
+  end
+
+  subgraph Vercel["Vercel — Next.js App Router"]
+    GEN["/api/generate"]
+    CHAT["/api/chat"]
+    RAGSRC["/api/rag/sources"]
+    AUTH["/api/auth/*"]
+    PAY["/api/checkout/*"]
+    SUP["/api/support"]
+  end
+
+  subgraph Supabase["Supabase"]
+    DB[("Postgres + RLS")]
+    VEC[("pgvector: rag_chunks")]
+    EMB["Edge Function: embed (gte-small)"]
+    AUTHSVC["Auth"]
+  end
+
+  Groq["Groq LLM<br/>llama-3.3-70b"]
+  Tavily["Tavily research"]
+  Chains["Etherscan V2 / TronGrid"]
+  n8n["n8n ingest workflow"]
+  Resend["Resend"]
+  CF["Cloudflare Email Routing"]
+
+  Home --> GEN
+  GEN --> Groq
+  GEN --> Tavily
+  GEN --> DB
+
+  Chat --> CHAT
+  CHAT --> EMB
+  CHAT --> VEC
+  CHAT --> Groq
+
+  Acct --> AUTH --> AUTHSVC
+  Acct --> PAY --> Chains
+  Home --> SUP --> DB
+  SUP --> Resend --> Inbox["Operator inbox"]
+  CF -->|forwards support@| Inbox
+
+  n8n --> RAGSRC
+  n8n --> EMB
+  n8n --> VEC
+```
+
+---
+
+## The RAG chat assistant (deep dive)
+
+The assistant answers three kinds of questions — **support**, **résumé advice**, and **pre-purchase / sales** — and grounds its answers in the site's own FAQ + blog so it doesn't hallucinate product facts. It's split into an **offline ingestion** pipeline and a **runtime query** path.
+
+```mermaid
+flowchart LR
+  subgraph Ingest["Ingestion (scheduled / on deploy)"]
+    direction TB
+    SCH["n8n: daily cron + Vercel deploy webhook"]
+    SRC["GET /api/rag/sources<br/>(FAQ + blog markdown, bearer-auth)"]
+    CHUNK["Chunk on h2 boundaries<br/>~2800 chars, batch of 2"]
+    E1["Edge Function: embed<br/>gte-small → 384-dim"]
+    UPS["UPSERT into rag_chunks<br/>(source, chunk_idx) on conflict"]
+    SCH --> SRC --> CHUNK --> E1 --> UPS
+  end
+
+  subgraph Query["Runtime query"]
+    direction TB
+    U["User question (ChatWidget)"]
+    API["POST /api/chat"]
+    Q["Quota gate (before LLM)"]
+    E2["Embed query (Edge Function)"]
+    M["match_rag_chunks RPC<br/>cosine top-K over pgvector"]
+    P["Build system prompt<br/>persona + retrieved context"]
+    G["Groq stream (Vercel AI SDK)"]
+    U --> API --> Q --> E2 --> M --> P --> G --> U
+  end
+
+  UPS -.writes.-> VEC[("rag_chunks · pgvector HNSW")]
+  M -.reads.-> VEC
+```
+
+### How retrieval works
+1. **Corpus** — `content/faq.md` + the MDX blog posts are the knowledge base.
+2. **Ingestion** — an n8n workflow (daily + on every production deploy) calls a bearer-protected `/api/rag/sources`, chunks the markdown on `##` headings (~2800-char windows, 400 overlap), embeds each chunk via a Supabase Edge Function, and bulk-UPSERTs vectors into the `rag_chunks` table. Re-runs are idempotent (unique `(source, chunk_idx)`), and stale rows from removed content are pruned.
+3. **Query** — `/api/chat` embeds the user's latest message with the same model, runs a cosine top-K search via the `match_rag_chunks` SQL function (pgvector + HNSW index), injects the retrieved passages into a 3-persona system prompt, and streams the answer from Groq through the Vercel AI SDK to the `useChat` widget.
+4. **Quota** — gated **before** the LLM call: anonymous 5/day (signed cookie), free signed-in 50/day (DB counters, lazy UTC reset), Pro/Staff unlimited.
+5. **Graceful degradation** — if retrieval is unavailable, the chat still answers from the system prompt instead of erroring.
+
+### Design decisions worth highlighting
+- **$0 budget end to end.** Vector store is pgvector inside the existing Supabase; embeddings run on Supabase's built-in `gte-small` Edge runtime (no embedding API bill); inference reuses the existing Groq key; orchestration is n8n's free tier.
+- **Embeddings moved off Vercel.** The first attempt ran a local embedding model in a Next route; its ONNX runtime (~513 MB) blew Vercel's 250 MB function limit. Moving embeddings to a Supabase Edge Function fixed it.
+- **One shared secret, three places.** A single `RAG_INGEST_TOKEN` (constant-time compared) gates `/api/rag/sources`, the embed Edge Function, and the n8n credential.
+- **Free-tier embed limit.** The Edge Function reliably embeds **2 inputs per call** (≥3 hits a compute limit), so ingestion batches in twos — a real constraint discovered and tuned in production.
+
+---
+
+## Project structure
+
+```
+app/
+  api/
+    chat/route.ts            # RAG chat — quota gate → retrieve → Groq stream
+    rag/sources/route.ts     # bearer-protected corpus feed for n8n
+    generate/route.ts        # main résumé + cover-letter pipeline
+    auth/* checkout/* support/* usage/*
+  page.tsx  layout.tsx        # home + root layout (metadata, JSON-LD)
+components/
+  ChatWidget.tsx             # floating assistant (Vercel AI SDK useChat)
+  SupportWidget.tsx          # support form (reused by "Talk to a human")
+  ResumePreview.tsx ATSScore.tsx ...
+lib/
+  rag/
+    retrieve.ts              # embed query + match_rag_chunks RPC
+    systemPrompt.ts          # 3-persona prompt + context injection
+    chatQuota.ts             # per-day quota (anon cookie + DB counters)
+  chatUsage.ts               # anonymous chat cookie
+  llm.ts prompts.ts pricing.ts plan.ts crypto.ts ...
+supabase/
+  functions/embed/index.ts   # gte-small embeddings Edge Function
+  migrations/                # 014 rag_chunks · 015 chat quota · 016 match RPC
+content/
+  faq.md  blog/*.mdx          # RAG corpus
+docs/                        # ARCHITECTURE · DECISIONS · CURRENT_STATE · TASKS
+```
+
+---
+
+## Local development
+
+```bash
+npm install
+cp .env.local.example .env.local   # fill in the keys below
+npm run dev                         # http://localhost:3000
+```
+
+### Key environment variables
+
+| Variable | Purpose |
+|---|---|
+| `GROQ_API_KEY` | LLM (résumé generation + chat) — **required** |
+| `NEXT_PUBLIC_SUPABASE_URL` / `_PUBLISHABLE_KEY` | Supabase client — **required** |
+| `SUPABASE_SECRET_KEY` | Admin client (payments, RAG retrieval) — **required** |
+| `USAGE_COOKIE_SECRET` | HMAC for quota / anon cookies — **required** |
+| `RAG_INGEST_TOKEN` | Shared bearer for `/api/rag/sources` + embed Edge Function |
+| `RESEND_API_KEY` + `SUPPORT_NOTIFY_EMAIL` | Support-ticket email notifications (optional) |
+| `TAVILY_API_KEY` | Cover-letter company research (optional) |
+| `OWNER_USDT_*_ADDRESS`, `ETHSCAN_API_KEY`, `TRONGRID_API_KEY` | Crypto checkout (optional) |
+
+See [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) for the full list and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the deep architecture.
+
+### Scripts
+
+| Command | Description |
+|---|---|
+| `npm run dev` | Dev server |
+| `npm run build` | Production build |
+| `npm run start` | Serve the build |
+
+---
+
+## Deployment
+
+Pushing to `master` auto-deploys on Vercel. The RAG pipeline additionally needs (one-time): migrations `014`–`016` applied on Supabase, the `embed` Edge Function deployed (`supabase functions deploy embed --no-verify-jwt`), `RAG_INGEST_TOKEN` set in all three places, and the n8n ingest workflow active.
+
+---
+
+## ATS output rules (do not regress)
+
+✅ Standard headings, exact JD keywords, simple HTML (`<h2> <h3> <p> <ul> <li> <strong>`), quantified bullets, action verbs.
+❌ No tables, columns, graphics, headers/footers, or keyword stuffing — most ATS parsers fail on those.
+
+---
+
+## License
+
+MIT.
