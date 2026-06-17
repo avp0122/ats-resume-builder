@@ -413,7 +413,7 @@ function Field({
       <div className="flex items-center gap-2">
         <div
           className={`flex-1 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white ${
-            mono ? 'font-mono text-xs break-all' : 'text-sm'
+            mono ? 'font-mono text-sm break-all' : 'text-base'
           }`}
         >
           {value}

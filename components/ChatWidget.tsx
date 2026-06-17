@@ -128,7 +128,7 @@ export default function ChatWidget() {
                   <h2 id="chat-title" className="truncate text-sm font-bold text-white">
                     kairesume assistant
                   </h2>
-                  <p className="truncate text-[11px] text-white/50">
+                  <p className="truncate text-xs text-white/50">
                     Resume help, pricing & support
                   </p>
                 </div>
@@ -214,13 +214,13 @@ export default function ChatWidget() {
                 </button>
               </div>
               <div className="mt-2 flex items-center justify-between px-0.5">
-                <p className="text-[10px] text-white/30">
+                <p className="text-xs text-white/30">
                   AI can be wrong — verify important details.
                 </p>
                 <button
                   type="button"
                   onClick={() => setShowSupport(true)}
-                  className="text-[11px] font-medium text-sky-300 underline-offset-2 transition hover:text-sky-200 hover:underline"
+                  className="text-sm font-medium text-sky-300 underline-offset-2 transition hover:text-sky-200 hover:underline"
                 >
                   Talk to a human
                 </button>
