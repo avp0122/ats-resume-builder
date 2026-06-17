@@ -80,4 +80,7 @@ Thumbs.db
 *.pytest_cache/
 .mypy_cache/
 coverage.xml
+
+# TypeScript incremental build cache
+*.tsbuildinfo
 ```

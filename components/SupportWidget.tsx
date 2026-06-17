@@ -7,7 +7,7 @@ const MAX_SUBJECT = 200;
 const MIN_MESSAGE = 10;
 const MAX_MESSAGE = 5000;
 
-interface SessionEcho {
+export interface SessionEcho {
   signedInEmail: string | null;
 }
 
@@ -87,7 +87,9 @@ export default function SupportWidget() {
   );
 }
 
-function SupportPopup({
+// Exported so the chat widget's "Talk to a human" link can reuse the exact
+// same support form instead of duplicating it (DECISION 031, PR 3).
+export function SupportPopup({
   onClose,
   session,
 }: {

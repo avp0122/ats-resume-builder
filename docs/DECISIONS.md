@@ -390,3 +390,24 @@ Picked Supabase. `gte-small` and `bge-small-en-v1.5` are both top-rank models in
 4. Deploy the Supabase Edge Function: `npx supabase functions deploy embed --no-verify-jwt`.
 5. Set the same secret on Supabase: `npx supabase secrets set RAG_INGEST_TOKEN=<same-value>`.
 6. Wait for redeploys. The endpoints are then live but `rag_chunks` is empty. Chat UI doesn't exist yet (PR 3), so no user impact.
+
+---
+
+### 032 · 2026-06-17 · Active
+
+**RAG chat — UI + inference (PR 3 of 3): Vercel AI SDK 4.x streaming, Groq Llama 3.3 70B, ChatWidget replaces the Support button**
+
+Completes DECISION 031. The foundation (schema + ingest endpoints, PR 1) and the n8n ingest workflow (PR 2) are live; this adds the user-facing chat.
+
+- **`/api/chat`** ([`app/api/chat/route.ts`](../app/api/chat/route.ts)) — `nodejs` runtime (needs cookies + service-role client). Pipeline per turn: (1) quota gate, (2) retrieve grounding, (3) `streamText` from Groq `llama-3.3-70b-versatile` via `@ai-sdk/groq`, returned as `toDataStreamResponse()`.
+- **Vercel AI SDK 4.x** (`ai@^4`, `@ai-sdk/groq@^1`) over a hand-rolled SSE stream: `useChat` on the client + `streamText`/`toDataStreamResponse` on the server is the documented happy path and far less code than wiring `ReadableStream` + the Groq streaming protocol by hand. The provider reads the existing `GROQ_API_KEY`, so no new credential. (Install note: `node_modules` is a WSL/Linux tree with POSIX symlinks — installs must run with WSL's npm; Windows npm fails on `.bin` symlinks.)
+- **Retrieval** ([`lib/rag/retrieve.ts`](../lib/rag/retrieve.ts)) — embeds the latest user message via the `embed` Edge Function (same `RAG_INGEST_TOKEN` bearer, 8s timeout) then calls the new `match_rag_chunks` RPC (migration 016) with the service-role client. **Non-fatal**: any retrieval failure logs and the chat answers without grounding rather than 500-ing, so a half-provisioned environment degrades instead of breaking.
+- **`match_rag_chunks` RPC** (migration 016) — supabase-js can't express `ORDER BY embedding <=> $q LIMIT k` through PostgREST, so cosine top-K lives in a SQL function. `match_count` clamped 1..20; execute revoked from `anon`/`authenticated` (service-role only).
+- **Quota** (DECISION 031 numbers) — gate fires BEFORE the LLM call (same rule as DECISION 012). Anonymous 5/day via `kairesume_chat_usage` HMAC cookie ([`lib/chatUsage.ts`](../lib/chatUsage.ts), lazy UTC-day reset); signed-in free 50/day via `profiles.chat_count_today` + `chat_reset_at` ([`lib/rag/chatQuota.ts`](../lib/rag/chatQuota.ts)); Pro/Staff unlimited. Over-limit → 429 with a plan-aware message; the signed-in counter write is best-effort (failure allows the turn rather than hard-blocking).
+- **System prompt** ([`lib/rag/systemPrompt.ts`](../lib/rag/systemPrompt.ts)) — one assistant, three personas (support / advice / sales), told to prefer retrieved CONTEXT, be candid when unsure, refuse off-topic, and point users at "Talk to a human" for account-specific issues.
+- **ChatWidget replaces SupportWidget in the layout** ([`components/ChatWidget.tsx`](../components/ChatWidget.tsx)). The old support form isn't deleted — `SupportPopup` is now exported from [`SupportWidget.tsx`](../components/SupportWidget.tsx) and reused behind the chat's "Talk to a human" link, so we keep one support form, not two.
+
+**Manual setup before chat is fully grounded in production**:
+1. Run migration 016 (`match_rag_chunks`) on production Supabase. Until then the chat works but answers ungrounded.
+2. Confirm migrations 014 + 015, `RAG_INGEST_TOKEN` (Vercel + Supabase secret), and the `embed` Edge Function from DECISION 031's setup are actually applied (the n8n workflow being active implies they are, but verify `rag_chunks` has rows).
+3. No new env var beyond what DECISION 031 already requires (`GROQ_API_KEY`, `RAG_INGEST_TOKEN`, `NEXT_PUBLIC_SUPABASE_URL`).

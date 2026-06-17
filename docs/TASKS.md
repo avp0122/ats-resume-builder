@@ -2,15 +2,20 @@
 
 > Active work state. Newest at the top in each section. Move tasks between sections as state changes. Reference PR numbers + commit hashes for traceability. See [CURRENT_STATE.md](CURRENT_STATE.md) for a deployment / route / env-var snapshot.
 
-Last updated: 2026-06-12.
+Last updated: 2026-06-17.
 
 ---
 
 ## In progress
 
-- **Chat assistant — RAG foundation (PR 1 of 3).** Schema (migration 014 `rag_chunks` + pgvector HNSW, migration 015 chat-quota columns), `content/faq.md` seed corpus, bearer-protected `/api/rag/sources` + `/api/rag/embed` endpoints, local `bge-small-en-v1.5` embeddings via `@huggingface/transformers`. Foundation only — no chat UI, no `/api/chat` yet. DECISION 031. **Open as PR (TBD)**.
-- **Chat assistant — n8n ingest workflow (PR 2 of 3).** After PR 1 merges + `RAG_INGEST_TOKEN` + migrations are applied: schedule + Vercel deploy webhook → `/api/rag/sources` → chunker → `/api/rag/embed` → Postgres UPSERT into Supabase → error trigger to existing `error_handler` Slack alerter. Built via n8n MCP tools.
-- **Chat assistant — chat UI + `/api/chat` (PR 3 of 3).** Floating ChatWidget (replaces Support button), Vercel AI SDK 4.x streaming from Groq Llama 3.3 70B, quota gating (Anon 5/day, Free 50/day, Pro/Staff unlimited), system prompt covering support + advice + sales personas. "Talk to a human" link inside chat opens existing support modal.
+- **Chat assistant — chat UI + `/api/chat` (PR 3 of 3).** DONE on branch `claude/rag-chat-ui`, typechecks + `next build` green. Floating ChatWidget replaces the Support button (`SupportPopup` reused behind "Talk to a human"); `/api/chat` streams Groq Llama 3.3 70B via Vercel AI SDK 4.x (`ai@^4` + `@ai-sdk/groq@^1`); quota gate before the LLM call (Anon 5/day cookie, Free 50/day on `profiles`, Pro/Staff unlimited); retrieval via `embed` Edge Function + new `match_rag_chunks` RPC (migration 016, non-fatal on failure); 3-persona system prompt. DECISION 032. **Open as PR (TBD); needs migration 016 applied for grounded answers.**
+
+---
+
+## Recently completed (chat foundation)
+
+- **Chat assistant — RAG foundation (PR 1 of 3).** Schema (014 `rag_chunks` + HNSW, 015 chat-quota cols), `content/faq.md` corpus, bearer `/api/rag/sources`, `gte-small` embeddings via Supabase Edge Function. DECISION 031. **Merged (#56, #57).**
+- **Chat assistant — n8n ingest workflow (PR 2 of 3).** Schedule + Vercel-deploy webhook → `/api/rag/sources` → chunk → `embed` Edge Function → UPSERT into `rag_chunks` → error trigger. **Built & active** (n8n workflow `VHF3xt11ExE3JiQW`).
 
 ---
 
@@ -23,7 +28,7 @@ Last updated: 2026-06-12.
 
 ### Manual / dashboard work (unblocked, just hasn't been done)
 
-- **Run Supabase migrations 014 + 015** on production (pgvector + `rag_chunks` table + chat-quota columns on `profiles`). Required before PR 2 of the chat work can populate the index. DECISION 031.
+- **Run Supabase migrations 014 + 015 + 016** on production (pgvector + `rag_chunks` table + chat-quota columns on `profiles` + `match_rag_chunks` retrieval RPC). 014/015 are required before PR 2 can populate the index; 016 is required for PR 3's `/api/chat` to return grounded answers (it degrades gracefully without it). DECISION 031 / 032.
 - **Generate `RAG_INGEST_TOKEN`** (`openssl rand -hex 32`) and set in two places:
   1. Vercel env var `RAG_INGEST_TOKEN` — gates `/api/rag/sources`
   2. Supabase secret: `npx supabase secrets set RAG_INGEST_TOKEN=<value>` — gates the `embed` Edge Function
