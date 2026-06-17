@@ -8,13 +8,14 @@ Last updated: 2026-06-17.
 
 ## In progress
 
-- **n8n daily reindex — publish `BATCH_SIZE=2`.** The chat is live and grounded (`rag_chunks` seeded directly), but the n8n auto-refresh still fails until the `BATCH_SIZE=2` change (staged in the editor draft via MCP) is **Published** in the n8n UI, and the Upsert Chunks query is confirmed as an Expression. Root cause: the embed Edge Function (free tier) only handles ~2 inputs/call. See [CURRENT_STATE.md](CURRENT_STATE.md) Manual maintenance §4.
+- *Nothing active — the RAG chat assistant is fully shipped and self-maintaining.*
 
 ---
 
 ## Recently completed (RAG chat assistant)
 
-- **2026-06-17** — Chat UI + `/api/chat` (PR 3 of 3): ChatWidget (Vercel AI SDK 4 `useChat`) replaces the Support button; quota-gated, RAG-grounded Groq stream; `match_rag_chunks` RPC (migration 016). · [PR #59, merged] · DECISION 032. **Live in production** (`rag_chunks` seeded, retrieval grounding verified).
+- **2026-06-17** — n8n daily reindex fixed: `BATCH_SIZE=2` (embed Edge Function free-tier limit) published live; full runs verified succeeding end-to-end (66 chunks refreshed). The corpus now auto-maintains via daily cron + Vercel-deploy webhook. DECISION 032 amendment.
+- **2026-06-17** — Chat UI + `/api/chat` (PR 3 of 3): ChatWidget (Vercel AI SDK 4 `useChat`) replaces the Support button; quota-gated, RAG-grounded Groq stream; `match_rag_chunks` RPC (migration 016). · [PR #59, merged] · DECISION 032. **Live in production** (retrieval grounding verified).
 - **2026-06-17** — Support-ticket email notifications via Resend (gated on `RESEND_API_KEY` + `SUPPORT_NOTIFY_EMAIL`). · [PR #61, merged] · DECISION 033.
 - **2026-06-17** — Bump smallest UI font sizes (wallet address, "Talk to a human", etc.). · [PR #62, merged]
 - **2026-06-17** — Silence `sharp` webpack warning from `@turbodocx/html-to-docx`. · [PR #60, merged]
