@@ -233,7 +233,7 @@ export function SupportPopup({
                 required
               />
               {session.signedInEmail && session.signedInEmail !== email.trim() && (
-                <p className="-mt-2 text-[10px] text-white/40 leading-snug">
+                <p className="-mt-2 text-xs text-white/40 leading-snug">
                   Different from your account email{' '}
                   <span className="text-white/70">{session.signedInEmail}</span>. We&apos;ll
                   reply to whatever you enter above.
@@ -248,10 +248,10 @@ export function SupportPopup({
               />
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-[11px] font-medium text-white/70 uppercase tracking-wider">
+                  <label className="block text-xs font-medium text-white/70 uppercase tracking-wider">
                     Message
                   </label>
-                  <span className="text-[10px] text-white/40">
+                  <span className="text-xs text-white/40">
                     {message.trim().length} / {MAX_MESSAGE}
                   </span>
                 </div>
@@ -308,7 +308,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-[11px] font-medium text-white/70 uppercase tracking-wider mb-1">
+      <label className="block text-xs font-medium text-white/70 uppercase tracking-wider mb-1">
         {label}
       </label>
       <input
