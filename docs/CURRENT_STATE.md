@@ -2,7 +2,7 @@
 
 > Operational snapshot. **Rewritten in full** whenever something material changes — not append-only. For history see [DECISIONS.md](DECISIONS.md). For active work see [TASKS.md](TASKS.md). For architecture see [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Last updated: 2026-05-26 (after PR #50 merge — Tavily research live).
+Last updated: 2026-06-17 (chat assistant PR 3 — `/api/chat` + ChatWidget on branch `claude/rag-chat-ui`).
 
 ---
 
@@ -54,6 +54,7 @@ Next.js 14.2.5 App Router + TypeScript + Tailwind + Supabase auth/db + Groq Llam
 | `POST /api/auth/{signup,signin,signout}` | — | Supabase auth proxies |
 | `POST /api/auth/forgot-password` | Anon | Send reset-email via Supabase (anti-enumerating) |
 | `POST /api/auth/reset-password` | Recovery session or signed-in | Apply new password via `updateUser` |
+| `POST /api/chat` | Anon-aware | Chat assistant — quota-gated, RAG-grounded Groq stream (Vercel AI SDK). Embeds the query via the `embed` Edge Function, top-K over `rag_chunks` (RPC `match_rag_chunks`), streams the answer |
 | `GET /api/rag/sources` | Bearer (`RAG_INGEST_TOKEN`) | Returns FAQ + blog as `[{source, content}]` for n8n to ingest |
 | Supabase Edge Function `embed` | Bearer (`RAG_INGEST_TOKEN`) | Runs `gte-small` via `Supabase.ai.Session` — embedding stays in Supabase infra, not in Vercel functions. Deployed via `supabase functions deploy embed --no-verify-jwt`. URL: `https://<project>.supabase.co/functions/v1/embed`. |
 | `POST /api/checkout/{crypto,verify}` | Signed in | USDT TRC-20 / ERC-20 payment + verification |
@@ -69,6 +70,8 @@ Next.js 14.2.5 App Router + TypeScript + Tailwind + Supabase auth/db + Groq Llam
 | Staff (comped) | Unlimited | `plan='staff'` (server-only, no UI to purchase) |
 
 Pro tiers in `lib/pricing.ts:PRO_TIERS`: 1mo / 3mo (-20%) / 1yr (-30%), starting $4.99/mo.
+
+**Chat assistant quota** (per UTC day, DECISION 031): Anonymous 5/day (`kairesume_chat_usage` HMAC cookie), Free signed-in 50/day (`profiles.chat_count_today` + `chat_reset_at`, lazy reset), Pro/Staff unlimited. Limits in `lib/pricing.ts` (`ANON_FREE_CHAT_MESSAGES` / `SIGNED_IN_FREE_CHAT_MESSAGES`). Gate fires before the LLM call (`lib/rag/chatQuota.ts`).
 
 ## Database schema
 
@@ -87,8 +90,9 @@ Applied migrations (in `supabase/migrations/`):
 - `013` profile_plan_allow_staff — expands `profiles_plan_check` to include `'staff'`
 - `014` rag_chunks — pgvector extension + `rag_chunks(id, source, chunk_idx, content, embedding vector(384), updated_at)` with HNSW cosine index
 - `015` profiles_chat_quota — adds `chat_count_today int` + `chat_reset_at timestamptz` on `profiles`
+- `016` match_rag_chunks — `match_rag_chunks(query_embedding vector(384), match_count int)` RPC for cosine top-K retrieval in `/api/chat` (service-role only; revoked from anon/authenticated)
 
-All applied to production as of 2026-05-26.
+All applied to production as of 2026-05-26 (migrations 014–016 tracked under chat manual setup below).
 
 **Caveat (DECISION 026):** the original table-creation SQL is not in this repo; `profiles_plan_check` and other constraints may exist on the live DB without a corresponding migration file. Use `\d+ public.profiles` in psql or the Supabase Table Editor to inspect.
 
@@ -120,7 +124,7 @@ All applied to production as of 2026-05-26.
 1. **Cloudflare** — disable `Content-Signal` auto-injection on robots.txt (Security → Bots → AI Audit).
 2. **Supabase dashboard — Site URL** → set to `https://kairesume.fit` (currently localhost for confirmation emails).
 3. **Supabase dashboard — Redirect URLs** → add `https://kairesume.fit/auth/callback` (required for the password-reset flow's PKCE exchange to succeed). The default `*` wildcard works too but is broader than necessary.
-4. **Supabase — run migrations 014 + 015** on production (pgvector + `rag_chunks` table + `profiles.chat_count_today` / `chat_reset_at` columns). Migrations apply cleanly; no downtime expected.
+4. **Supabase — run migrations 014 + 015 + 016** on production (pgvector + `rag_chunks` table + `profiles.chat_count_today` / `chat_reset_at` columns + `match_rag_chunks` retrieval RPC). Migrations apply cleanly; no downtime expected. **016 is required for `/api/chat` retrieval** — without it the chat answers without grounding (it degrades, doesn't error).
 5. **Generate `RAG_INGEST_TOKEN`** → 32 random bytes (`openssl rand -hex 32`). One value, set in three places:
    1. Vercel env var `RAG_INGEST_TOKEN` (gates `/api/rag/sources`)
    2. Supabase secret `RAG_INGEST_TOKEN` (gates the `embed` Edge Function): `npx supabase secrets set RAG_INGEST_TOKEN=<value>`

@@ -4,7 +4,7 @@ import './globals.css';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import RouteProgress from '@/components/RouteProgress';
-import SupportWidget from '@/components/SupportWidget';
+import ChatWidget from '@/components/ChatWidget';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Analytics } from '@vercel/analytics/next';
 import { ANON_FREE_GENERATIONS, SIGNED_IN_FREE_GENERATIONS } from '@/lib/pricing';
@@ -276,7 +276,7 @@ export default function RootLayout({
         <Navbar />
         <div className="flex-1">{children}</div>
         <Footer />
-        <SupportWidget />
+        <ChatWidget />
         <SpeedInsights />
         <Analytics />
       </body>

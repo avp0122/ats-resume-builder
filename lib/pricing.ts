@@ -93,6 +93,13 @@ export function coerceBillingPeriod(value: unknown): BillingPeriod {
 export const SIGNED_IN_FREE_GENERATIONS = 10;
 export const ANON_FREE_GENERATIONS = 1;
 
+// Chat assistant daily message limits (DECISION 031). Counted per UTC day:
+// anonymous visitors via an HMAC cookie (lib/chatUsage.ts), signed-in free
+// users via the chat_count_today / chat_reset_at columns on profiles
+// (migration 015). Pro/Staff are uncapped.
+export const ANON_FREE_CHAT_MESSAGES = 5;
+export const SIGNED_IN_FREE_CHAT_MESSAGES = 50;
+
 /**
  * Static list rendered by the pricing page. Pro is shown as a single
  * card; the period selector lives inside the card and resolves to a
