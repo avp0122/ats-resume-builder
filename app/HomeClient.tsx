@@ -912,6 +912,21 @@ export default function Home({ signedIn, storedResumeFilename }: HomeProps) {
 
       <SeoContent />
 
+      <section className="mt-10 flex flex-wrap items-center justify-center gap-6">
+        <a href="https://peerpush.com/p/kairesume" target="_blank" rel="noopener">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="https://peerpush.com/p/kairesume/badge.png" alt="kairesume badge" width={230} height={54} />
+        </a>
+        <a href="https://peerpush.com/p/kairesume" target="_blank" rel="noopener">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="https://peerpush.com/p/kairesume/rating-badge.png"
+            alt="kairesume rating on PeerPush"
+            style={{ width: 400 }}
+          />
+        </a>
+      </section>
+
       <footer className="mt-16 mb-6 text-center text-xs text-white/40">
         Built with care. Inputs are processed in-memory and discarded after generation.
       </footer>
