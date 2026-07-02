@@ -66,10 +66,6 @@ export default function Footer() {
         <div className="mt-10 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-white/40">
           <div>© {year} kairesume. All rights reserved.</div>
           <div>Job descriptions discarded after generation. Stored resume text removable anytime from your account.</div>
-          <a href="https://peerpush.com/p/kairesume" target="_blank" rel="noopener" className="shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="https://peerpush.com/p/kairesume/badge.png" alt="kairesume badge" width={230} height={54} />
-          </a>
         </div>
       </div>
     </footer>
